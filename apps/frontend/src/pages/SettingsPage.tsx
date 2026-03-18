@@ -15,41 +15,11 @@ interface WhisperStatus {
 }
 
 const API_CONFIGS = [
-  {
-    provider: 'deepseek' as const,
-    label: 'DeepSeek API Key',
-    placeholder: 'sk-...',
-    hint: '用于 AI 摘要生成，platform.deepseek.com 获取，性价比最�?,
-    settingKey: 'api_key_deepseek',
-  },
-  {
-    provider: 'openai' as const,
-    label: 'OpenAI API Key',
-    placeholder: 'sk-...',
-    hint: '支持 GPT-4o，platform.openai.com 获取',
-    settingKey: 'api_key_openai',
-  },
-  {
-    provider: 'groq' as const,
-    label: 'Groq API Key',
-    placeholder: 'gsk_...',
-    hint: '免费额度大，速度极快，支�?Whisper 转写，console.groq.com 获取',
-    settingKey: 'api_key_groq',
-  },
-  {
-    provider: 'gemini' as const,
-    label: 'Google Gemini API Key',
-    placeholder: 'AIza...',
-    hint: 'Google AI Studio 获取，aistudio.google.com',
-    settingKey: 'api_key_gemini',
-  },
-  {
-    provider: 'zhipu' as const,
-    label: '智谱 AI API Key',
-    placeholder: '智谱 GLM-4 备用 Key',
-    hint: 'open.bigmodel.cn 获取，可选备�?,
-    settingKey: 'api_key_zhipu',
-  },
+  { provider: 'deepseek' as const, label: 'DeepSeek API Key', placeholder: 'sk-...', hint: '用于 AI 摘要生成，platform.deepseek.com 获取，性价比最高', settingKey: 'api_key_deepseek' },
+  { provider: 'openai' as const, label: 'OpenAI API Key', placeholder: 'sk-...', hint: '支持 GPT-4o，platform.openai.com 获取', settingKey: 'api_key_openai' },
+  { provider: 'groq' as const, label: 'Groq API Key', placeholder: 'gsk_...', hint: '免费额度大，速度极快，支持 Whisper 转写，console.groq.com 获取', settingKey: 'api_key_groq' },
+  { provider: 'gemini' as const, label: 'Google Gemini API Key', placeholder: 'AIza...', hint: 'Google AI Studio 获取，aistudio.google.com', settingKey: 'api_key_gemini' },
+  { provider: 'zhipu' as const, label: '智谱 AI API Key', placeholder: '智谱 GLM-4 备用 Key', hint: 'open.bigmodel.cn 获取，可选备用', settingKey: 'api_key_zhipu' },
 ]
 
 export default function SettingsPage() {
@@ -61,17 +31,15 @@ export default function SettingsPage() {
   const [whisperPath, setWhisperPath] = useState('')
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(null)
   const [whisperSaving, setWhisperSaving] = useState(false)
-  const [twitterAccounts, setTwitterAccounts] = useState<{username: string; active: boolean}[]>([])
+  const [twitterAccounts, setTwitterAccounts] = useState<{ username: string; active: boolean }[]>([])
   const [twitterForm, setTwitterForm] = useState({ username: '', password: '', email: '', email_password: '' })
   const [twitterAdding, setTwitterAdding] = useState(false)
-  const [twitterConfigured, setTwitterConfigured] = useState(false)
 
   useEffect(() => { loadStorageInfo(); loadWhisperStatus(); loadTwitterStatus() }, [])
 
   const loadTwitterStatus = async () => {
     try {
-      const data = await apiGet<{configured: boolean; accounts: {username: string; active: boolean}[]}>('/api/twitter/account/status')
-      setTwitterConfigured(data.configured)
+      const data = await apiGet<{ configured: boolean; accounts: { username: string; active: boolean }[] }>('/api/twitter/account/status')
       setTwitterAccounts(data.accounts ?? [])
     } catch {}
   }
@@ -82,7 +50,7 @@ export default function SettingsPage() {
     }
     setTwitterAdding(true)
     try {
-      const result = await apiPost<{success: boolean; message: string}>('/api/twitter/account', twitterForm)
+      const result = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', twitterForm)
       if (result.success) {
         showToast('success', result.message)
         setTwitterForm({ username: '', password: '', email: '', email_password: '' })
@@ -96,8 +64,12 @@ export default function SettingsPage() {
 
   const handleRemoveTwitterAccount = async (username: string) => {
     try {
-      await apiPost('/api/twitter/account', { _method: 'DELETE', username })
-      showToast('success', `已删除账�?@${username}`)
+      await fetch('http://127.0.0.1:57891/api/twitter/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      })
+      showToast('success', `已删除账号 @${username}`)
       await loadTwitterStatus()
     } catch (e) { showToast('error', String(e)) }
   }
@@ -105,8 +77,8 @@ export default function SettingsPage() {
   const loadStorageInfo = async () => {
     try {
       const data = await apiGet<Record<string, string>>('/api/settings')
-      setStorageInfo({ downloadDir: data.download_dir ?? '', exportDir: data.export_dir ?? '', cacheSize: data.cache_size ?? '计算�?..' })
-    } catch { }
+      setStorageInfo({ downloadDir: data.download_dir ?? '', exportDir: data.export_dir ?? '', cacheSize: data.cache_size ?? '计算中...' })
+    } catch {}
   }
 
   const loadWhisperStatus = async () => {
@@ -114,7 +86,7 @@ export default function SettingsPage() {
       const data = await apiGet<WhisperStatus>('/api/settings/whisper-status')
       setWhisperStatus(data)
       if (data.path) setWhisperPath(data.path)
-    } catch { }
+    } catch {}
   }
 
   const handleSaveAndTest = async (provider: typeof API_CONFIGS[number]['provider'], settingKey: string) => {
@@ -125,7 +97,7 @@ export default function SettingsPage() {
       await apiPost('/api/settings', { [settingKey]: value.trim() })
       const result = await testConnection(provider)
       if (result.status === 'ok') {
-        showToast('success', provider + ' 连接成功，延�?' + (result.latencyMs ?? '--') + 'ms')
+        showToast('success', provider + ' 连接成功，延迟 ' + (result.latencyMs ?? '--') + 'ms')
         await loadSettings()
       } else {
         showToast('error', result.message ?? '连接失败')
@@ -139,29 +111,29 @@ export default function SettingsPage() {
     const dir = await window.electronAPI.selectDirectory()
     if (!dir) return
     await apiPost('/api/settings', { [type === 'download' ? 'download_dir' : 'export_dir']: dir })
-    showToast('success', '目录已更�?)
+    showToast('success', '目录已更新')
     await loadStorageInfo()
   }
 
   const handleClearCache = async () => {
-    try { await apiPost('/api/settings/clear-cache', {}); showToast('success', '缓存已清�?); await loadStorageInfo() }
+    try { await apiPost('/api/settings/clear-cache', {}); showToast('success', '缓存已清理'); await loadStorageInfo() }
     catch { showToast('error', '清理失败') }
   }
 
   const handleSaveWhisperPath = async () => {
-    if (!whisperPath.trim()) { showToast('error', '请填写模型路�?); return }
+    if (!whisperPath.trim()) { showToast('error', '请填写模型路径'); return }
     setWhisperSaving(true)
     try {
       await apiPost('/api/settings/whisper-unload', {})
       await apiPost('/api/settings', { whisper_model_path: whisperPath.trim() })
       await loadWhisperStatus()
-      showToast('success', '模型路径已保�?)
+      showToast('success', '模型路径已保存')
     } catch (e) { showToast('error', String(e)) }
     finally { setWhisperSaving(false) }
   }
 
   const handleSelectWhisperDir = async () => {
-    if (!window.electronAPI) { showToast('error', '�?Electron 环境支持'); return }
+    if (!window.electronAPI) { showToast('error', '仅 Electron 环境支持'); return }
     const dir = await window.electronAPI.selectDirectory()
     if (dir) setWhisperPath(dir)
   }
@@ -174,7 +146,12 @@ export default function SettingsPage() {
     return <span className="w-3.5 h-3.5 rounded-full bg-muted inline-block" />
   }
 
-  const TABS: [TabKey, string][] = [['api', 'API 配置'], ['storage', '存储管理'], ['whisper', '语音转写'], ['twitter', 'Twitter 账号']]
+  const TABS: [TabKey, string][] = [
+    ['api', 'API 配置'],
+    ['storage', '存储管理'],
+    ['whisper', '语音转写'],
+    ['twitter', 'Twitter 账号'],
+  ]
 
   return (
     <div className="h-full flex flex-col">
@@ -183,7 +160,7 @@ export default function SettingsPage() {
         <h1 className="text-base font-semibold">系统设置</h1>
       </div>
       <div className="flex flex-1 overflow-hidden">
-        <nav className="w-40 border-r border-border p-3 flex flex-col gap-1">
+        <nav className="w-44 border-r border-border p-3 flex flex-col gap-1">
           {TABS.map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)}
               className={cn('w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between transition-colors',
@@ -196,7 +173,7 @@ export default function SettingsPage() {
 
           {activeTab === 'api' && (
             <div className="flex flex-col gap-6 max-w-xl">
-              <p className="text-xs text-muted-foreground">API Key 加密存储在本地数据库，不上传至任何服务器�?/p>
+              <p className="text-xs text-muted-foreground">API Key 加密存储在本地数据库，不上传至任何服务器。</p>
               {API_CONFIGS.map((cfg) => (
                 <div key={cfg.provider} className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">{statusIcon(cfg.provider)}<label className="text-sm font-medium">{cfg.label}</label></div>
@@ -209,7 +186,7 @@ export default function SettingsPage() {
                     <button onClick={() => handleSaveAndTest(cfg.provider, cfg.settingKey)}
                       disabled={savingKey === cfg.settingKey || !keyValues[cfg.settingKey]?.trim()}
                       className="px-3 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 whitespace-nowrap">
-                      {savingKey === cfg.settingKey ? <Loader2 size={14} className="animate-spin" /> : '保存并测�?}
+                      {savingKey === cfg.settingKey ? <Loader2 size={14} className="animate-spin" /> : '保存并测试'}
                     </button>
                   </div>
                 </div>
@@ -219,12 +196,12 @@ export default function SettingsPage() {
 
           {activeTab === 'storage' && (
             <div className="flex flex-col gap-6 max-w-xl">
-              {[{type: 'download' as const, label: '视频下载目录', val: storageInfo?.downloadDir},
-                {type: 'export' as const, label: 'Markdown 导出目录', val: storageInfo?.exportDir}].map(item => (
+              {([{ type: 'download' as const, label: '视频下载目录', val: storageInfo?.downloadDir },
+                { type: 'export' as const, label: 'Markdown 导出目录', val: storageInfo?.exportDir }]).map(item => (
                 <div key={item.type} className="flex flex-col gap-2">
                   <label className="text-sm font-medium">{item.label}</label>
                   <div className="flex gap-2 items-center">
-                    <span className="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm text-muted-foreground font-mono truncate">{item.val ?? '加载�?..'}</span>
+                    <span className="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm text-muted-foreground font-mono truncate">{item.val ?? '加载中...'}</span>
                     <button onClick={() => handleSelectDir(item.type)} className="px-3 py-2 rounded-lg bg-muted hover:bg-secondary text-sm flex items-center gap-1.5"><FolderOpen size={14} /> 更改</button>
                   </div>
                 </div>
@@ -232,7 +209,7 @@ export default function SettingsPage() {
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">临时文件缓存</label>
                 <div className="flex gap-2 items-center">
-                  <span className="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm text-muted-foreground">{storageInfo?.cacheSize ?? '计算�?..'}</span>
+                  <span className="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm text-muted-foreground">{storageInfo?.cacheSize ?? '计算中...'}</span>
                   <button onClick={handleClearCache} className="px-3 py-2 rounded-lg bg-destructive/20 hover:bg-destructive/30 text-destructive text-sm flex items-center gap-1.5"><Trash2 size={14} /> 清理</button>
                 </div>
                 <p className="text-xs text-muted-foreground">清理 AI 处理过程中产生的临时音频文件</p>
@@ -243,50 +220,38 @@ export default function SettingsPage() {
           {activeTab === 'whisper' && (
             <div className="flex flex-col gap-6 max-w-xl">
               <div className="p-4 rounded-xl bg-muted/50 border border-border flex flex-col gap-3">
-                <div className="flex items-center gap-2 font-medium text-sm"><Cpu size={15} className="text-primary" />本地 Whisper 模型（免费，无需联网�?/div>
+                <div className="flex items-center gap-2 font-medium text-sm"><Cpu size={15} className="text-primary" />本地 Whisper 模型（免费，无需联网）</div>
                 <div className="text-xs text-muted-foreground space-y-1">
-                  <p>使用 faster-whisper 在本地运行，中文识别效果好，完全免费�?/p>
-                  <p>推荐模型�?span className="font-mono text-foreground">faster-whisper-small</span>（约 466MB�?/p>
-                  <p>HuggingFace 下载�?span className="text-primary">https://huggingface.co/Systran/faster-whisper-small</span></p>
-                  <p>ModelScope（国内）�?span className="text-primary">https://modelscope.cn/models/pkufool/faster-whisper-small</span></p>
-                  <p className="mt-1">下载后解压，将包�?model.bin 的文件夹路径填入下方�?/p>
+                  <p>使用 faster-whisper 在本地运行，中文识别效果好，完全免费。</p>
+                  <p>推荐模型：<span className="font-mono text-foreground">faster-whisper-small</span>（约 466MB）</p>
+                  <p>HuggingFace：<span className="text-primary">https://huggingface.co/Systran/faster-whisper-small</span></p>
+                  <p>ModelScope（国内）：<span className="text-primary">https://modelscope.cn/models/pkufool/faster-whisper-small</span></p>
                 </div>
               </div>
-
               {whisperStatus && (
                 <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg text-sm border',
                   whisperStatus.available ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400')}>
                   {whisperStatus.available
-                    ? <><CheckCircle size={14} />模型已就绪（{whisperStatus.model_size}�?/>
-                    : <><XCircle size={14} />{whisperStatus.error || '模型未配�?}</>}
+                    ? <><CheckCircle size={14} />模型已就绪（{whisperStatus.model_size}）</>
+                    : <><XCircle size={14} />{whisperStatus.error || '模型未配置'}</>}
                 </div>
               )}
-
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Whisper 模型文件夹路�?/label>
+                <label className="text-sm font-medium">Whisper 模型文件夹路径</label>
                 <div className="flex gap-2">
                   <input type="text" value={whisperPath} onChange={e => setWhisperPath(e.target.value)}
-                    placeholder="例：C:\\Users\\你的名字\\Models\\faster-whisper-small"
-                    data-selectable="true"
+                    placeholder="例：C:\Users\Models\faster-whisper-small" data-selectable="true"
                     className="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors font-mono" />
                   <button onClick={handleSelectWhisperDir} className="px-3 py-2 rounded-lg bg-muted hover:bg-secondary text-sm flex items-center gap-1.5"><FolderOpen size={14} /> 浏览</button>
                 </div>
                 <button onClick={handleSaveWhisperPath} disabled={whisperSaving || !whisperPath.trim()}
                   className="self-start px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-2">
                   {whisperSaving ? <Loader2 size={14} className="animate-spin" /> : <Cpu size={14} />}
-                  {whisperSaving ? '验证�?..' : '保存模型路径'}
+                  {whisperSaving ? '验证中...' : '保存模型路径'}
                 </button>
-              </div>
-
-              <div className="p-4 rounded-xl bg-muted/30 border border-border text-xs text-muted-foreground flex flex-col gap-1.5">
-                <p className="font-medium text-foreground">其他免费替代方案</p>
-                <p>�?<span className="text-foreground">OpenAI Whisper API</span>�?0.006/分钟，无本地GPU也可�?/p>
-                <p>�?<span className="text-foreground">Groq Whisper</span>：免费额度大，速度快，https://console.groq.com</p>
-                <p>�?<span className="text-foreground">本地更大模型</span>：下�?faster-whisper-medium �?large-v3 获得更高准确�?/p>
               </div>
             </div>
           )}
-
 
           {activeTab === 'twitter' && (
             <div className="flex flex-col gap-6 max-w-xl">
