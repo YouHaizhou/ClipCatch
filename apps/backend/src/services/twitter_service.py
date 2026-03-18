@@ -4,6 +4,7 @@
 # ⚠️ 警告：使用本模块即表示用户自行承担账号封禁及法律风险
 # ============================================================
 import asyncio
+import os
 import json
 from pathlib import Path
 from typing import Optional
@@ -17,6 +18,7 @@ _api_lock = asyncio.Lock()
 
 # Clash Verge 本地代理配置
 _PROXY_URL = 'http://127.0.0.1:7897'
+os.environ['TWS_PROXY'] = _PROXY_URL
 
 
 async def _get_api():
@@ -26,12 +28,6 @@ async def _get_api():
         if _api_instance is None:
             try:
                 from twscrape import API
-                import httpx
-                # 注入代理，让 twscrape 走 Clash Verge
-                proxy_client = httpx.AsyncClient(
-                    proxy=_PROXY_URL,
-                    verify=False,
-                )
                 _api_instance = API(str(_ACCOUNTS_DB), proxy=_PROXY_URL)
             except ImportError:
                 raise RuntimeError('twscrape 未安装，请运行: pip install twscrape')

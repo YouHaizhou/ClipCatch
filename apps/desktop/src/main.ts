@@ -118,16 +118,8 @@ async function createWindow(): Promise<void> {
     windowReady = true  // 窗口显示后才允许退出确认
   })
 
-  mainWindow.on('close', (e) => {
-    if (!windowReady) return  // 窗口未就绪时不弹确认框
-    const choice = dialog.showMessageBoxSync(mainWindow!, {
-      type: 'question',
-      buttons: ['继续退出', '取消'],
-      defaultId: 1,
-      title: '确认退出',
-      message: '退出后下载任务将中断，确定退出吗？',
-    })
-    if (choice === 1) e.preventDefault()
+  mainWindow.on('close', (_e) => {
+    // 直接关闭，不弹确认框
   })
 
   // 覆盖 Chromium 默认 CSP：允许加载 http 图片（B站封面等）和连接本地后端
