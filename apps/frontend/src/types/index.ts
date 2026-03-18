@@ -8,7 +8,7 @@ export interface VideoInfo {
   id: string
   title: string
   url: string
-  platform: 'youtube' | 'bilibili' | 'other'
+  platform: 'youtube' | 'bilibili' | 'twitter' | 'other'
   duration: number        // 单位：秒
   thumbnailUrl: string
   thumbnailPath?: string  // 本地缓存路径
@@ -135,8 +135,10 @@ export interface AiStreamEvent {
   stage?: AiTaskStatus
   message?: string
   content?: string    // type=token 时的 LLM 输出片段
-  noteId?: number     // type=done 时
-  wordCount?: number  // type=done 时
+  noteId?: number     // type=done 时（camelCase）
+  note_id?: number    // type=done 时（snake_case，后端实际发送）
+  wordCount?: number  // type=done 时（camelCase）
+  word_count?: number // type=done 时（snake_case，后端实际发送）
 }
 
 // ---------- API 连接测试 ----------

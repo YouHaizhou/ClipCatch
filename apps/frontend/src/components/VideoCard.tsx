@@ -12,10 +12,10 @@ interface VideoCardProps {
 }
 
 const PLATFORM_COLORS: Record<string, string> = {
-  youtube: 'bg-red-500', bilibili: 'bg-blue-500', other: 'bg-muted-foreground',
+  youtube: 'bg-red-500', bilibili: 'bg-blue-500', twitter: 'bg-sky-500', other: 'bg-muted-foreground',
 }
 const PLATFORM_LABELS: Record<string, string> = {
-  youtube: 'YouTube', bilibili: 'Bilibili', other: '其他',
+  youtube: 'YouTube', bilibili: 'Bilibili', twitter: 'Twitter/X', other: '其他',
 }
 
 export default function VideoCard({ video, onDownload, onPreview }: VideoCardProps) {
@@ -60,7 +60,7 @@ export default function VideoCard({ video, onDownload, onPreview }: VideoCardPro
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <User size={11} />
           <span className="truncate">{video.author || '未知作者'}</span>
-          {video.publishedAt && <span className="ml-auto shrink-0">{video.publishedAt}</span>}
+
         </div>
       </div>
     </div>
