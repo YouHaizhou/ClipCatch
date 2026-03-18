@@ -149,8 +149,8 @@ async function createWindow(): Promise<void> {
     await mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   } else {
     await mainWindow.loadURL('http://localhost:5173')
-    // 开发模式开启 DevTools，方便查看网络请求和 Console 报错
-    mainWindow.webContents.openDevTools()
+    // 开发模式不自动开启 DevTools，如需调试请按 Ctrl+Shift+I 手动开启
+    // mainWindow.webContents.openDevTools()
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -199,8 +199,12 @@ ipcMain.on('window:close', () => mainWindow?.close())
 // ---------- 5. 应用生命周期 ----------
 app.whenReady().then(async () => {
   try {
-    startBackend()
-    await waitForBackend()
+    if (app.isPackaged) {
+      startBackend()
+      await waitForBackend()
+    } else {
+      await waitForBackend(10)
+    }
     await createWindow()
   } catch (err) {
     console.error('[Main] Startup failed:', err)
