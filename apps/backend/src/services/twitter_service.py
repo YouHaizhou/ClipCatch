@@ -34,13 +34,80 @@ async def _get_api():
     return _api_instance
 
 
-async def add_twitter_account(username: str, password: str, email: str, email_password: str = '') -> dict:
+async def add_twitter_account(username: str, password: str, email: str, email_password: str = '', cookies: str = '') -> dict:
     """
     添加 Twitter 账号凭证并登录
+    支持两种方式：
+    1. cookies 字符串（推荐）：直接导入浏览器 Cookie，绕过登录
+    2. 账号密码：通过 twscrape 自动登录（需要代理且不被 Cloudflare 封锁）
     返回 {'success': bool, 'message': str}
     """
     try:
         api = await _get_api()
+
+        if cookies:
+            # 方式1：直接导入 Cookie
+            return await _add_account_by_cookies(api, username, email, cookies)
+        else:
+            # 方式2：账号密码登录
+            return await _add_account_by_password(api, username, password, email, email_password)
+    except Exception as e:
+        return {'success': False, 'message': f'操作失败: {e}'}
+
+
+async def _add_account_by_cookies(api, username: str, email: str, cookies_str: str) -> dict:
+    """通过浏览器 Cookie 字符串直接激活账号"""
+    try:
+        # 解析 Cookie 字符串（支持 JSON 格式或 key=value; 格式）
+        cookies_dict = {}
+        cookies_str = cookies_str.strip()
+        if cookies_str.startswith('{'):
+            cookies_dict = json.loads(cookies_str)
+        else:
+            for part in cookies_str.split(';'):
+                part = part.strip()
+                if '=' in part:
+                    k, v = part.split('=', 1)
+                    cookies_dict[k.strip()] = v.strip()
+
+        required = ['auth_token', 'ct0']
+        missing = [k for k in required if k not in cookies_dict]
+        if missing:
+            return {'success': False, 'message': f'Cookie 缺少必要字段: {missing}，请确保包含 auth_token 和 ct0'}
+
+        # 构建账号并直接标记为 active
+        import random, string
+        from twscrape.account import Account
+        from twscrape.utils import utc
+
+        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        acc = Account(
+            username=username,
+            password='cookie_import',
+            email=email or f'{username}@cookie.import',
+            email_password='',
+            user_agent=ua,
+            active=True,
+            cookies=cookies_dict,
+            headers={
+                'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+                'x-csrf-token': cookies_dict.get('ct0', ''),
+                'x-twitter-auth-type': 'OAuth2Session',
+                'x-twitter-active-user': 'yes',
+                'x-twitter-client-language': 'en',
+                'user-agent': ua,
+                'content-type': 'application/json',
+            },
+        )
+        await api.pool.save(acc)
+        return {'success': True, 'message': f'账号 @{username} Cookie 导入成功'}
+    except Exception as e:
+        return {'success': False, 'message': f'Cookie 导入失败: {e}'}
+
+
+async def _add_account_by_password(api, username: str, password: str, email: str, email_password: str) -> dict:
+    """通过账号密码登录"""
+    try:
         await api.pool.add_account(
             username=username,
             password=password,
@@ -48,11 +115,10 @@ async def add_twitter_account(username: str, password: str, email: str, email_pa
             email_password=email_password or password,
         )
         await api.pool.login_all()
-        # 检查是否登录成功
         accounts = await api.pool.get_all()
         logged_in = [a for a in accounts if a.active]
         if not logged_in:
-            return {'success': False, 'message': '登录失败，请检查账号密码是否正确'}
+            return {'success': False, 'message': '登录失败，Twitter 可能拦截了自动登录，建议改用 Cookie 方式'}
         return {'success': True, 'message': f'账号 @{username} 登录成功'}
     except Exception as e:
         err = str(e)
@@ -61,7 +127,7 @@ async def add_twitter_account(username: str, password: str, email: str, email_pa
         elif 'locked' in err.lower():
             return {'success': False, 'message': '账号已被锁定，请在 Twitter 网站解锁后重试'}
         else:
-            return {'success': False, 'message': f'登录失败: {err}'}
+            return {'success': False, 'message': f'登录失败: {err}，建议改用 Cookie 方式'}
 
 
 async def get_twitter_account_status() -> dict:

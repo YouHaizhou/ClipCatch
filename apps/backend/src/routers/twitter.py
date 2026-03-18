@@ -15,13 +15,16 @@ async def add_account(body: dict):
     password = body.get('password', '').strip()
     email = body.get('email', '').strip()
     email_password = body.get('email_password', '').strip()
+    cookies = body.get('cookies', '').strip()
 
-    if not username or not password or not email:
-        return {'code': 1, 'message': '用户名、密码、邮箱均为必填'}
+    if not username:
+        return {'code': 1, 'message': '用户名为必填'}
+    if not cookies and (not password or not email):
+        return {'code': 1, 'message': '请填写 Cookie 或账号密码+邮箱'}
 
     try:
         from services.twitter_service import add_twitter_account
-        result = await add_twitter_account(username, password, email, email_password)
+        result = await add_twitter_account(username, password, email, email_password, cookies)
         if result['success']:
             return {'code': 0, 'data': result}
         else:

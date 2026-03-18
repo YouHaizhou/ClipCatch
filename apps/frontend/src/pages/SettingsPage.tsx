@@ -32,7 +32,7 @@ export default function SettingsPage() {
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(null)
   const [whisperSaving, setWhisperSaving] = useState(false)
   const [twitterAccounts, setTwitterAccounts] = useState<{ username: string; active: boolean }[]>([])
-  const [twitterForm, setTwitterForm] = useState({ username: '', password: '', email: '', email_password: '' })
+  const [twitterForm, setTwitterForm] = useState({ username: '', password: '', email: '', email_password: '', cookies: '' })
   const [twitterAdding, setTwitterAdding] = useState(false)
 
   useEffect(() => { loadStorageInfo(); loadWhisperStatus(); loadTwitterStatus() }, [])
@@ -45,15 +45,24 @@ export default function SettingsPage() {
   }
 
   const handleAddTwitterAccount = async () => {
-    if (!twitterForm.username || !twitterForm.password || !twitterForm.email) {
-      showToast('error', '请填写用户名、密码和邮箱'); return
+    if (!twitterForm.username) {
+      showToast('error', '请填写用户名'); return
+    }
+    if (!twitterForm.cookies && (!twitterForm.password || !twitterForm.email)) {
+      showToast('error', '请填写 Cookie 字符串，或同时填写密码和邮箱'); return
     }
     setTwitterAdding(true)
     try {
-      const result = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', twitterForm)
+      const result = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', {
+        username: twitterForm.username,
+        password: twitterForm.password,
+        email: twitterForm.email,
+        email_password: twitterForm.email_password,
+        cookies: twitterForm.cookies,
+      })
       if (result.success) {
         showToast('success', result.message)
-        setTwitterForm({ username: '', password: '', email: '', email_password: '' })
+        setTwitterForm({ username: '', password: '', email: '', email_password: '', cookies: '' })
         await loadTwitterStatus()
       } else {
         showToast('error', result.message)
@@ -278,27 +287,34 @@ export default function SettingsPage() {
                 </div>
               )}
               <div className="flex flex-col gap-3">
+                <div className="p-3 rounded-lg bg-sky-500/10 border border-sky-500/30 text-xs text-sky-200 flex flex-col gap-1">
+                  <p className="font-semibold text-sky-300">推荐：Cookie 方式（更稳定，无需代理）</p>
+                  <p>1. 浏览器打开 twitter.com 并登录</p>
+                  <p>2. 按 F12 → Application → Cookies → twitter.com</p>
+                  <p>3. 找到 <span className="font-mono text-sky-300">auth_token</span> 和 <span className="font-mono text-sky-300">ct0</span>，格式填写：<span className="font-mono">auth_token=xxx; ct0=yyy</span></p>
+                </div>
                 <label className="text-sm font-medium">添加 Twitter 账号</label>
+                <input type="text" placeholder="用户名（不含@）必填" data-selectable="true"
+                  value={twitterForm.username} onChange={e => setTwitterForm(p => ({...p, username: e.target.value}))}
+                  className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
+                <textarea placeholder="Cookie 字符串（推荐）：auth_token=xxx; ct0=yyy" data-selectable="true"
+                  value={twitterForm.cookies ?? ''} onChange={e => setTwitterForm(p => ({...p, cookies: e.target.value}))}
+                  rows={2}
+                  className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors font-mono resize-none" />
+                <p className="text-xs text-muted-foreground -mt-1">或填写账号密码登录（需代理，可能被拦截）</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <input type="text" placeholder="用户名（不含@）" data-selectable="true"
-                    value={twitterForm.username} onChange={e => setTwitterForm(p => ({...p, username: e.target.value}))}
-                    className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
                   <input type="password" placeholder="密码" data-selectable="true"
                     value={twitterForm.password} onChange={e => setTwitterForm(p => ({...p, password: e.target.value}))}
                     className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
                   <input type="email" placeholder="注册邮箱" data-selectable="true"
                     value={twitterForm.email} onChange={e => setTwitterForm(p => ({...p, email: e.target.value}))}
                     className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
-                  <input type="password" placeholder="邮箱密码（选填）" data-selectable="true"
-                    value={twitterForm.email_password} onChange={e => setTwitterForm(p => ({...p, email_password: e.target.value}))}
-                    className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
                 </div>
                 <button onClick={handleAddTwitterAccount} disabled={twitterAdding}
                   className="self-start flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-500 text-white text-sm font-medium hover:bg-sky-600 disabled:opacity-40 transition-colors">
                   {twitterAdding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  {twitterAdding ? '登录中...' : '添加并登录'}
+                  {twitterAdding ? '导入中...' : '添加账号'}
                 </button>
-                <p className="text-xs text-muted-foreground">登录后账号 Cookie 保存在本地，下次搜索自动使用。</p>
               </div>
             </div>
           )}
