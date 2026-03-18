@@ -94,6 +94,8 @@ function waitForBackend(maxRetries = 30): Promise<void> {
 
 // ---------- 3. 创建主窗口 ----------
 async function createWindow(): Promise<void> {
+  let windowReady = false  // 标志位：窗口完全显示后才启用退出确认
+
   mainWindow = new BrowserWindow({
     title: 'ClipCatch',
     width: 1280,
@@ -105,8 +107,6 @@ async function createWindow(): Promise<void> {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      // 关闭 webSecurity：允许渲染进程直连 127.0.0.1 后端
-      // 本应用仅加载本地/localhost 资源，无安全风险
       webSecurity: false,
     },
     show: false,
@@ -115,9 +115,11 @@ async function createWindow(): Promise<void> {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
+    windowReady = true  // 窗口显示后才允许退出确认
   })
 
   mainWindow.on('close', (e) => {
+    if (!windowReady) return  // 窗口未就绪时不弹确认框
     const choice = dialog.showMessageBoxSync(mainWindow!, {
       type: 'question',
       buttons: ['继续退出', '取消'],
@@ -203,7 +205,18 @@ app.whenReady().then(async () => {
       startBackend()
       await waitForBackend()
     } else {
-      await waitForBackend(10)
+      // 开发模式：等待后端就绪
+      await waitForBackend(20)
+      // 等待 Vite 前端就绪
+      await new Promise<void>((resolve) => {
+        const tryFrontend = () => {
+          http.get('http://localhost:5173', (res) => {
+            if (res.statusCode && res.statusCode < 500) resolve()
+            else setTimeout(tryFrontend, 500)
+          }).on('error', () => setTimeout(tryFrontend, 500))
+        }
+        tryFrontend()
+      })
     }
     await createWindow()
   } catch (err) {
