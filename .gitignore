@@ -6,7 +6,6 @@ __pycache__/
 .Python
 *.egg
 *.egg-info/
-dist/
 build/
 .env/
 venv/
@@ -22,6 +21,9 @@ yarn-error.log*
 .pnpm-store/
 
 # Build outputs
+dist/
+dist-electron/
+release/
 apps/frontend/dist/
 apps/desktop/dist/
 apps/desktop/dist-electron/
