@@ -3,7 +3,6 @@
 # ============================================================
 import os
 # 修复 ctranslate2 + onnxruntime 同时加载导致的 OpenMP 冲突
-# 两个库各自打包了 libiomp5md.dll，Windows 上会触发 OMP Error #15 进程崩溃
 os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
 
 import argparse
@@ -15,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from database import init_db
-from routers import search, download, ai, library, settings, notes
+from routers import search, download, ai, library, settings, notes, twitter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=57891)
@@ -42,6 +41,7 @@ app.include_router(ai.router, prefix='/api')
 app.include_router(library.router, prefix='/api')
 app.include_router(settings.router, prefix='/api')
 app.include_router(notes.router, prefix='/api')
+app.include_router(twitter.router, prefix='/api')
 
 FALLBACK_PNG = base64.b64decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
@@ -81,7 +81,6 @@ async def proxy_image(url: str):
         }
 
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            # B 站需要先获取首页 Cookie
             if 'hdslb.com' in url or 'bilibili.com' in url:
                 try:
                     await client.get('https://www.bilibili.com/', timeout=4,

@@ -191,7 +191,15 @@ async def _search_twitter(query: str, page: int = 1) -> list:
     finally:
         db.close()
     if not serper_key:
-        # 未配置 Serper Key，直接返回兜底跳转卡片
+        # 未配置 Serper Key，尝试 twscrape（需用户配置 Twitter 账号）
+        try:
+            from services.twitter_service import search_twitter_videos
+            tw_results = await search_twitter_videos(query, limit=12)
+            if tw_results:
+                return tw_results
+        except Exception:
+            pass
+        # 两者都无法使用，返回兜底跳转卡片
         twitter_search_url = f'https://twitter.com/search?q={query.replace(" ", "%20")}&f=video'
         return [{
             'id': 'twitter_search_no_key',
