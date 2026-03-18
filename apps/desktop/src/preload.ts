@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('shell:open-external', url),
 
+  // Twitter 内嵌登录窗口（自动抓取 Cookie）
+  twitterLogin: (): Promise<{ success: boolean; cookies?: Record<string, string>; auth_token?: string; ct0?: string; message?: string }> =>
+    ipcRenderer.invoke('twitter:login-window'),
+
   // 获取后端 FastAPI 服务端口
   getBackendPort: (): Promise<number> =>
     ipcRenderer.invoke('app:get-backend-port'),
@@ -40,6 +44,7 @@ declare global {
       saveFile: (defaultName: string) => Promise<string | null>
       openPath: (filePath: string) => Promise<void>
       openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
+      twitterLogin: () => Promise<{ success: boolean; cookies?: Record<string, string>; auth_token?: string; ct0?: string; message?: string }>
       getBackendPort: () => Promise<number>
       minimize: () => void
       maximize: () => void

@@ -183,6 +183,52 @@ ipcMain.handle('shell:open-external', async (_event, url: string) => {
   return { success: true }
 })
 
+// ---------- Twitter 登录窗口（内嵌浏览器自动抓 Cookie）----------
+ipcMain.handle('twitter:login-window', async () => {
+  return new Promise((resolve) => {
+    const loginWin = new BrowserWindow({
+      width: 600,
+      height: 700,
+      title: '登录 Twitter/X',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    })
+
+    loginWin.loadURL('https://twitter.com/login')
+
+    // 轮询检测 auth_token cookie
+    const timer = setInterval(async () => {
+      try {
+        const cookies = await loginWin.webContents.session.cookies.get({ domain: '.twitter.com' })
+        const authToken = cookies.find(c => c.name === 'auth_token')
+        const ct0 = cookies.find(c => c.name === 'ct0')
+        if (authToken && ct0) {
+          clearInterval(timer)
+          // 获取所有 cookie 构建 JSON
+          const cookieObj: Record<string, string> = {}
+          cookies.forEach(c => { cookieObj[c.name] = c.value })
+          loginWin.close()
+          resolve({ success: true, cookies: cookieObj, auth_token: authToken.value, ct0: ct0.value })
+        }
+      } catch {}
+    }, 1000)
+
+    loginWin.on('closed', () => {
+      clearInterval(timer)
+      resolve({ success: false, message: '用户关闭了登录窗口' })
+    })
+
+    // 最多等待 5 分钟
+    setTimeout(() => {
+      clearInterval(timer)
+      if (!loginWin.isDestroyed()) loginWin.close()
+      resolve({ success: false, message: '登录超时' })
+    }, 5 * 60 * 1000)
+  })
+})
+
 ipcMain.on('window:minimize', () => mainWindow?.minimize())
 ipcMain.on('window:maximize', () => {
   if (mainWindow?.isMaximized()) mainWindow.unmaximize()

@@ -34,6 +34,7 @@ export default function SettingsPage() {
   const [twitterAccounts, setTwitterAccounts] = useState<{ username: string; active: boolean }[]>([])
   const [twitterForm, setTwitterForm] = useState({ username: '', password: '', email: '', email_password: '', cookies: '' })
   const [twitterAdding, setTwitterAdding] = useState(false)
+  const [twitterLoginLoading, setTwitterLoginLoading] = useState(false)
 
   useEffect(() => { loadStorageInfo(); loadWhisperStatus(); loadTwitterStatus() }, [])
 
@@ -42,6 +43,38 @@ export default function SettingsPage() {
       const data = await apiGet<{ configured: boolean; accounts: { username: string; active: boolean }[] }>('/api/twitter/account/status')
       setTwitterAccounts(data.accounts ?? [])
     } catch {}
+  }
+
+  const handleOneClickLogin = async () => {
+    if (!window.electronAPI?.twitterLogin) {
+      showToast('error', '仅 Electron 环境支持一键登录'); return
+    }
+    setTwitterLoginLoading(true)
+    try {
+      const result = await window.electronAPI.twitterLogin()
+      if (result.success && result.cookies && result.auth_token) {
+        const username = twitterForm.username || prompt('请输入你的 Twitter 用户名（不含@）') || ''
+        if (!username) { showToast('error', '请填写用户名'); return }
+        const cookieStr = JSON.stringify(result.cookies)
+        const res = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', {
+          username,
+          password: '',
+          email: '',
+          email_password: '',
+          cookies: cookieStr,
+        })
+        if (res.success) {
+          showToast('success', res.message)
+          setTwitterForm({ username: '', password: '', email: '', email_password: '', cookies: '' })
+          await loadTwitterStatus()
+        } else {
+          showToast('error', res.message)
+        }
+      } else {
+        showToast('error', result.message || '登录失败')
+      }
+    } catch (e) { showToast('error', String(e)) }
+    finally { setTwitterLoginLoading(false) }
   }
 
   const handleAddTwitterAccount = async () => {
@@ -292,6 +325,16 @@ export default function SettingsPage() {
                   <p>1. 浏览器打开 twitter.com 并登录</p>
                   <p>2. 按 F12 → Application → Cookies → twitter.com</p>
                   <p>3. 找到 <span className="font-mono text-sky-300">auth_token</span> 和 <span className="font-mono text-sky-300">ct0</span>，格式填写：<span className="font-mono">auth_token=xxx; ct0=yyy</span></p>
+                </div>
+                <button onClick={handleOneClickLogin} disabled={twitterLoginLoading}
+                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 disabled:opacity-40 transition-colors w-full justify-center">
+                  {twitterLoginLoading ? <Loader2 size={15} className="animate-spin" /> : <Twitter size={15} />}
+                  {twitterLoginLoading ? '等待浏览器登录...' : '一键登录 Twitter（推荐）'}
+                </button>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="flex-1 h-px bg-border" />
+                  <span>或手动填写 Cookie / 账号密码</span>
+                  <span className="flex-1 h-px bg-border" />
                 </div>
                 <label className="text-sm font-medium">添加 Twitter 账号</label>
                 <input type="text" placeholder="用户名（不含@）必填" data-selectable="true"
