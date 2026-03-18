@@ -1,0 +1,121 @@
+# VideoAI Desktop — 后端 Agent Rules
+
+你是 VideoAI Desktop 项目的**后端 Agent**，工作目录是 `apps/backend/`。只负责后端相关工作，不修改前端或 Electron 文件。
+
+## 🎯 核心职责
+
+- FastAPI 路由和接口设计
+- 业务逻辑（services/）
+- 数据库设计和 ORM（SQLAlchemy + SQLite）
+- 第三方服务集成（Serper、DeepSeek、faster-whisper）
+
+## 📁 工作范围
+
+```
+apps/backend/src/
+├── main.py
+├── models.py
+├── database.py
+├── routers/
+└── services/
+```
+
+## 🔄 任务工作流
+
+1. **先读** `.agent/status.md`
+2. 检查 `.agent/tasks/` 读取任务文件
+3. 读取任务 `## Git 信息` 区块，执行 `git fetch origin && git checkout <分支名>`
+   > ⚠️ 分支已由主 Agent 创建，**不要自己创建或删除分支**
+4. 在 `src/` 开发
+5. 将任务文件移到 `.agent/completed/`，补充 `## 完成记录`
+6. 等待主 Agent 验收
+
+> ⛔ **严禁执行任何 git 操作**（git add / commit / push / checkout / branch 等）
+> git 操作统一由主 Agent 执行
+
+## 📋 关键约定（必须遵守）
+
+### API 响应格式
+```python
+# 成功
+return {'code': 0, 'data': {}}
+# 失败
+return {'code': 1, 'message': '具体错误'}
+```
+
+### SSE 字段命名
+- 推送字段必须用 snake_case：`progress_pct`、`speed_bps`、`eta_seconds`、`note_id`、`word_count`
+- 禁止混用 camelCase
+
+### 搜索结果字段
+- 路由层必须用 `_to_camel()` 将 snake_case 转为 camelCase 再返回前端
+- 原因：前端 `VideoInfo` 类型使用 camelCase（`thumbnailUrl`、`viewCount` 等）
+
+### 数据库 Session 管理
+- 请求内用 `Depends(get_db)`（自动关闭）
+- 后台任务用独立 `SessionLocal()`，必须 try/finally 关闭
+- **禁止在后台任务中复用请求的 Session**
+
+### asyncio.create_task
+- 绝对不能传入请求 Session（`db=db`）
+- 后台任务内部必须自己创建 `SessionLocal()`
+
+### 路由安全
+- 每个路由最外层包裹 try/except Exception，防止 500 错误
+- 打印完整 traceback 到日志
+
+### Windows 兼容性
+- `main.py` 顶部必须保留 `KMP_DUPLICATE_LIB_OK=TRUE` 环境变量设置
+
+## 🖥️ 运行环境
+
+- **后端在 WSL（Ubuntu 22.04）内运行**
+- **启动命令**：
+  ```bash
+  cd /root/projects/video-ai-desktop/apps/backend/src
+  HOME=/tmp/VideoAI-home KMP_DUPLICATE_LIB_OK=TRUE \
+    /root/projects/video-ai-desktop/.env/venv-linux/bin/python3 \
+    main.py --port 57891 --host 127.0.0.1
+  ```
+- **健康检查**：`curl http://127.0.0.1:57891/health`
+- **数据库**：`/tmp/VideoAI-home/VideoAI/app.db`
+
+## 📚 初始化必读
+
+1. `src/models.py` — 数据模型
+2. `src/database.py` — Session 管理
+3. `.agent/status.md` — 当前验收记录
+4. `.agent/tasks/` — 待执行任务
+
+---
+
+## ⚠️ 文件操作经验（避免重复踩坑）
+
+### Git 仓库定位
+- 本项目**代码在 WSL 中**（`/root/projects/video-ai-desktop/`），Windows 路径下**没有 `.git`**
+- 所有 git 命令必须在 WSL 内执行：`wsl -d Ubuntu-22.04 bash -c "git -C /root/projects/video-ai-desktop ..."`
+- Windows PowerShell 中**禁止使用 `&&`** 连接多条命令，改用 `;` 分隔
+- 若 WSL git 仓库不存在，先 `git init` 再 `git checkout -b <分支名>`
+
+### 代码同步：Windows → WSL
+- Windows 编辑器修改的文件需同步到 WSL，使用 WSL 访问 Windows 挂载路径：
+  ```bash
+  cp '/mnt/g/求职/项目/Resource-Seach-Summary/video-ai-desktop/apps/backend/src/routers/library.py' \
+     /root/projects/video-ai-desktop/apps/backend/src/routers/library.py
+  ```
+- 同步后用 `grep` 验证关键字段是否已写入，再执行 git commit
+
+### StrReplace 使用规范
+- **使用前必须先 Read 文件**，确认 old_string 与文件内容完全一致（包括缩进、空格、换行符）
+- Windows 下文件可能含 CRLF 换行符，导致 StrReplace 匹配失败
+- **多处替换失败时，直接用 Write 工具覆盖整个文件**，不要反复尝试 StrReplace
+- 修改较大时（超过 20 行），优先用 Write 而非 StrReplace，避免定位失败
+
+### Write 工具使用规范
+- 写入前先 Read 原文件，保留不需要修改的部分原样复制
+- 写入后立即 Read 回来验证关键行（或用 grep 确认），确保内容正确落盘
+- 中文路径下 Write 正常工作，无需特殊处理
+
+### 并行读取
+- 任务开始时，把所有相关文件（routers、services、models）**一次性并行 Read**，减少来回等待
+- 不要边读边改，先全部读完再开始修改

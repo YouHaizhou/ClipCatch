@@ -1,0 +1,56 @@
+# ============================================================
+# electron-builder 配置
+# Windows 便携 zip 包（无需代码签名，无需 Developer Mode）
+# asar 保护源码
+# ============================================================
+appId: com.videoai.desktop
+productName: VideoAI
+copyright: Copyright \u00a9 2026 VideoAI
+
+# asar 打包：将所有源码压缩为 app.asar，防止直接读取
+asar: true
+# 解包 FFmpeg 二进制（不能放在 asar 内，需直接执行）
+asarUnpack:
+  - resources/ffmpeg/**
+  - backend/**
+
+directories:
+  buildResources: build-resources
+  output: release
+
+# 打包进安装包的文件
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+
+# 额外资源（放在 resources/ 目录，运行时可访问）
+extraResources:
+  - from: resources/ffmpeg/win
+    to: ffmpeg/win
+    filter:
+      - ffmpeg.exe
+      - ffprobe.exe
+  - from: backend
+    to: backend
+    filter:
+      - "**/*.py"
+      - requirements.txt
+
+# ============================================================
+# Windows 配置 — zip 便携包（不需要 winCodeSign/symlink 权限）
+# ============================================================
+win:
+  target:
+    - target: zip
+      arch:
+        - x64
+  requestedExecutionLevel: asInvoker
+
+# ============================================================
+# macOS 配置（备用）
+# ============================================================
+mac:
+  target:
+    - dmg
+  category: public.app-category.productivity

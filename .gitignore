@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.env/
+venv/
+.venv/
+*.pyc
+
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# Build outputs
+apps/frontend/dist/
+apps/desktop/dist/
+apps/desktop/dist-electron/
+apps/desktop/release/
+
+# Database & data
+*.db
+*.sqlite
+*.sqlite3
+/tmp/
+
+# ffmpeg binaries (too large for git)
+apps/desktop/resources/ffmpeg/win/ffmpeg.exe
+apps/desktop/resources/ffmpeg/win/ffprobe.exe
+apps/desktop/resources/ffmpeg/*.zip
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Whisper models (too large)
+*.bin
+models/
+
+# Zone Identifier files (Windows)
+*:Zone.Identifier
+*.Zone.Identifier
+
+# pnpm
+.npmrc

@@ -1,0 +1,120 @@
+/* 不使用 Google Fonts 外链，改用系统字体栈避免 CSP 限制 */
+/* JetBrains Mono 通过系统安装或 fallback 到 monospace */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   全局 CSS 变量 — 深色主题（类 VS Code 风格）
+   字体选用 JetBrains Mono + Noto Sans SC
+   避免 Inter/Roboto 等过度常见字体
+============================================ */
+
+@layer base {
+  :root {
+    /* 背景色系 — 深邃墨绿基调 */
+    --background: 220 16% 10%;
+    --foreground: 210 20% 90%;
+
+    --card: 220 16% 13%;
+    --card-foreground: 210 20% 90%;
+
+    --muted: 220 14% 18%;
+    --muted-foreground: 215 14% 55%;
+
+    --border: 220 14% 20%;
+    --input: 220 14% 16%;
+    --ring: 174 72% 48%;
+
+    /* 主色调 — 青绿色（科技感强，区别于紫色系 AI slop）*/
+    --primary: 174 72% 48%;
+    --primary-foreground: 220 16% 10%;
+
+    --secondary: 220 14% 20%;
+    --secondary-foreground: 210 20% 85%;
+
+    --accent: 174 72% 20%;
+    --accent-foreground: 174 72% 80%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    /* 禁止文字选中拖拽（桌面应用体验）*/
+    -webkit-user-select: none;
+    user-select: none;
+    /* 禁止系统右键菜单（Electron 应用） */
+    -webkit-app-region: no-drag;
+  }
+
+  /* 允许输入框和文本内容区可选中 */
+  input, textarea, [data-selectable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* 自定义滚动条 — 细线风格 */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+
+  /* 代码字体 */
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+}
+
+/* 打字机动画 — AI 生成内容逐字出现 */
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typing-cursor::after {
+  content: '▋';
+  display: inline-block;
+  animation: blink-cursor 1s step-end infinite;
+  color: hsl(var(--primary));
+  margin-left: 1px;
+}
+
+/* 处理中脉冲动画 — AI 状态角标 */
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.ai-processing-dot {
+  position: relative;
+}
+.ai-processing-dot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  animation: pulse-ring 1.2s ease-out infinite;
+}

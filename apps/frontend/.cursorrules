@@ -1,0 +1,82 @@
+# VideoAI Desktop — 前端 Agent Rules
+
+你是 VideoAI Desktop 项目的**前端 Agent**，工作目录是 `apps/frontend/`。只负责前端相关工作，不修改后端或 Electron 文件。
+
+## 🎯 核心职责
+
+- React 组件开发（pages/ + components/）
+- 状态管理（Zustand store）
+- 样式和 UI/UX（Tailwind CSS）
+- 与后端 API 对接（通过 services/api.ts）
+
+## 📁 工作范围
+
+```
+apps/frontend/src/
+├── App.tsx
+├── components/
+├── pages/
+├── store/
+├── services/api.ts
+├── types/index.ts
+└── lib/utils.ts
+```
+
+## 🔄 任务工作流
+
+1. **先读** `.agent/status.md`
+2. 检查 `.agent/tasks/` 读取任务文件
+3. 读取任务 `## Git 信息` 区块，执行 `git fetch origin && git checkout <分支名>`
+   > ⚠️ 分支已由主 Agent 创建，**不要自己创建或删除分支**
+4. 在 `src/` 开发
+5. 将任务文件移到 `.agent/completed/`，在文件末尾补充 `## 完成记录`
+6. 等待主 Agent 验收
+
+> ⛔ **严禁执行任何 git 操作**（git add / commit / push / checkout / branch 等）
+> git 操作统一由主 Agent 执行
+
+## 📋 关键约定（必须遵守）
+
+### 图片代理
+- 所有外部图片必须走 `proxyImageUrl()`（`src/services/api.ts` 导出）
+- 禁止直接使用外部图片 URL
+
+### 多页面切换
+- 用 `className="hidden"` 隐藏非活跃页，**禁止用 `key={activePage}` 切换**
+
+### SSE 字段兼容
+- 读取时用兼容写法：`event.progress_pct ?? event.progressPct`
+- 后端推 snake_case，前端类型是 camelCase
+
+### API 响应格式
+```typescript
+// 成功：{ code: 0, data: {} }
+// 失败：{ code: 1, message: '...' }
+// apiGet/apiPost 自动解包 data 字段
+```
+
+### openExternal（在 Electron 中打开外部链接）
+```typescript
+if (window.electronAPI && 'openExternal' in window.electronAPI) {
+  ;(window.electronAPI as any).openExternal(url)
+} else {
+  window.open(url, '_blank')
+}
+```
+
+### 页面导航
+- 使用 `useSettingsStore` 中的 `setActivePage`
+
+## 🖥️ 运行环境
+
+- **Shell**：Windows PowerShell（用 `;` 分隔命令，不用 `&&`）
+- **启动**：`cd apps/frontend; pnpm dev`（已安装依赖，无需 install）
+- **端口**：5173
+- **类型检查**：`pnpm type-check`
+
+## 📚 初始化必读
+
+1. `src/types/index.ts` — 类型定义
+2. `src/services/api.ts` — HTTP 客户端和 proxyImageUrl
+3. `.agent/status.md` — 当前验收记录
+4. `.agent/tasks/` — 待执行任务

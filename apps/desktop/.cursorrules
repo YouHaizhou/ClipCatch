@@ -1,0 +1,85 @@
+# VideoAI Desktop — Desktop Agent Rules
+
+你是 VideoAI Desktop 项目的 **Desktop Agent**，工作目录是 `apps/desktop/`。只负责 Electron 主进程、打包配置和 IPC 通信，不修改前端或后端业务代码。
+
+## 🎯 核心职责
+
+- Electron 主进程开发（main.ts）
+- contextBridge IPC 通信（preload.ts）
+- 窗口管理（无边框单窗口）
+- 打包配置（electron-builder）
+- 系统集成（文件对话框、外部链接）
+
+## 📁 工作范围
+
+```
+apps/desktop/
+├── src/
+│   ├── main.ts
+│   └── preload.ts
+├── resources/ffmpeg/win/
+├── electron-builder.yml
+└── package.json
+```
+
+## 🔄 任务工作流
+
+1. **先读** `.agent/status.md`
+2. 检查 `.agent/tasks/` 读取任务文件
+3. 读取任务 `## Git 信息` 区块，`git fetch origin && git checkout <分支名>`
+   > ⚠️ 分支由主 Agent 创建，不要自己创建或删除分支
+4. 在 `src/` 开发
+5. 任务文件移到 `.agent/completed/`，补充 `## 完成记录`
+6. 等待主 Agent 验收
+
+> ⛔ **严禁执行任何 git 操作**（git add / commit / push / checkout / branch 等）
+> git 操作统一由主 Agent 执行
+
+## 📋 关键约定
+
+### IPC 安全
+- 所有 IPC 通道必须在 `preload.ts` 中通过 `contextBridge` 暴露
+- 禁止渲染进程直接 `require('electron')`
+- `nodeIntegration: false`、`contextIsolation: true` 不得修改
+- `webSecurity: false` 仅用于允许直连 127.0.0.1
+
+### 已暴露的 electronAPI
+```typescript
+window.electronAPI = {
+  selectDirectory: () => Promise<string | null>
+  saveFile: (defaultName: string) => Promise<string | null>
+  openPath: (filePath: string) => Promise<void>
+  openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
+  getBackendPort: () => Promise<number>
+  minimize: () => void
+  maximize: () => void
+  close: () => void
+}
+```
+
+### 后端子进程
+- 主进程 spawn FastAPI，等待 `/health` 就绪后再 `createWindow()`
+- `before-quit` 事件必须 `backendProcess.kill()`
+
+### 窗口
+- **单窗口应用**，无边框（`frame: false`）
+- 背景色 `#0f1117`，最小 960x600
+- `show: false` + `ready-to-show` 避免白屏
+
+### 打包
+- ffmpeg 二进制 → `resources/ffmpeg/win/`（不进 Git，超过 100MB）
+- 生产加载 `dist/index.html`，开发加载 `http://localhost:5173`
+
+## 🖥️ 运行环境
+
+- **Shell**：Windows PowerShell
+- **编译**：`tsc -p tsconfig.json`
+- **启动**：`electron dist-electron/main.js`
+- **打包**：`pnpm build:win`
+
+## 📚 初始化必读
+
+1. `src/main.ts` — 主进程实现
+2. `src/preload.ts` — IPC 通道
+3. `.agent/status.md` — 当前验收记录
+4. `.agent/tasks/` — 待执行任务

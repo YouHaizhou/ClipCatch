@@ -1,0 +1,17 @@
+{
+  "name": "video-ai-desktop-monorepo",
+  "version": "1.0.0",
+  "description": "VideoAI Desktop - Monorepo with frontend, backend, and Electron",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "build:win": "pnpm -r build:win",
+    "preview": "pnpm -r preview",
+    "lint": "pnpm -r lint",
+    "type-check": "pnpm -r type-check"
+  },
+  "devDependencies": {
+    "pnpm": "^8.0.0"
+  }
+}
