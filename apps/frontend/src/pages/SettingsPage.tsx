@@ -308,3 +308,22 @@ export default function SettingsPage() {
     </div>
   )
 }
+                  <input type="password" placeholder="邮箱密码（选填）" data-selectable="true"
+                    value={twitterForm.email_password} onChange={e => setTwitterForm(p => ({...p, email_password: e.target.value}))}
+                    className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
+                </div>
+                <button onClick={handleAddTwitterAccount} disabled={twitterAdding}
+                  className="self-start flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-500 text-white text-sm font-medium hover:bg-sky-600 disabled:opacity-40 transition-colors">
+                  {twitterAdding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  {twitterAdding ? '登录中...' : '添加并登录'}
+                </button>
+                <p className="text-xs text-muted-foreground">登录后账号 Cookie 保存在本地，下次搜索自动使用。</p>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  )
+}
