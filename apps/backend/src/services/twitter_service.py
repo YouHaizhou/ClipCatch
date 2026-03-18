@@ -15,15 +15,24 @@ _ACCOUNTS_DB.parent.mkdir(parents=True, exist_ok=True)
 _api_instance = None
 _api_lock = asyncio.Lock()
 
+# Clash Verge 本地代理配置
+_PROXY_URL = 'http://127.0.0.1:7897'
+
 
 async def _get_api():
-    """获取或初始化 twscrape API 实例"""
+    """获取或初始化 twscrape API 实例（走本地代理）"""
     global _api_instance
     async with _api_lock:
         if _api_instance is None:
             try:
                 from twscrape import API
-                _api_instance = API(str(_ACCOUNTS_DB))
+                import httpx
+                # 注入代理，让 twscrape 走 Clash Verge
+                proxy_client = httpx.AsyncClient(
+                    proxy=_PROXY_URL,
+                    verify=False,
+                )
+                _api_instance = API(str(_ACCOUNTS_DB), proxy=_PROXY_URL)
             except ImportError:
                 raise RuntimeError('twscrape 未安装，请运行: pip install twscrape')
     return _api_instance
