@@ -1,7 +1,7 @@
 {
-  "name": "video-ai-desktop",
+  "name": "clipcatch",
   "version": "1.0.0",
-  "description": "VideoAI Desktop - Electron App",
+  "description": "ClipCatch - 一站式视频知识提炼桌面应用",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {

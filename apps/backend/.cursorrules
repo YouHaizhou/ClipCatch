@@ -89,6 +89,25 @@ return {'code': 1, 'message': '具体错误'}
 
 ---
 
+## 🔁 自我更新机制
+
+**每次任务结束前**，检查本次执行过程中是否出现以下情况：
+- 某个操作**失败超过1次**（StrReplace 失败、WSL 命令报错、cp 超时等）
+- 需要**尝试多种变体**才成功（引号嵌套、路径编码、换行符等）
+- 某个规律**之前 rules 没有记录**
+
+若满足以上任意一条，**必须在完成任务后立即更新本文件**（`.cursorrules`），将新经验追加到「⚠️ 文件操作经验」章节，格式：
+```
+### [问题场景简述]
+- 根本原因：...
+- 正确做法：...
+- 错误做法（禁止重复）：...
+```
+
+> 目标：每次踩坑只踩一次，rules 是活的文档，随任务持续生长。
+
+---
+
 ## ⚠️ 文件操作经验（避免重复踩坑）
 
 ### Git 仓库定位
@@ -97,25 +116,49 @@ return {'code': 1, 'message': '具体错误'}
 - Windows PowerShell 中**禁止使用 `&&`** 连接多条命令，改用 `;` 分隔
 - 若 WSL git 仓库不存在，先 `git init` 再 `git checkout -b <分支名>`
 
-### 代码同步：Windows → WSL
-- Windows 编辑器修改的文件需同步到 WSL，使用 WSL 访问 Windows 挂载路径：
+### 代码同步：Windows → WSL（标准流程，不是备选）
+- **Windows 编辑器修改文件后，必须同步到 WSL**，两套文件系统完全独立
+- **正确命令格式**（使用 `-e` 标志 + 单引号包裹，避免引号嵌套）：
   ```bash
-  cp '/mnt/g/求职/项目/Resource-Seach-Summary/video-ai-desktop/apps/backend/src/routers/library.py' \
-     /root/projects/video-ai-desktop/apps/backend/src/routers/library.py
+  wsl -d Ubuntu-22.04 -e bash -c 'SRC="/mnt/g/求职/项目/..."; DST="/root/projects/..."; cp "$SRC/file.py" "$DST/file.py" && echo DONE'
   ```
-- 同步后用 `grep` 验证关键字段是否已写入，再执行 git commit
+- **禁止**在 `wsl -d Ubuntu-22.04 bash -c "..."` 的双引号内部再用双引号（会导致 EOF 解析错误）
+- **禁止**把中文路径做 unicode 转义（`\u6c42` 等）传给 WSL，WSL 无法解析转义序列
+- 同步后用 `wc -l` 验证行数而非 `grep`（grep 在 WSL 中容易超时）
 
-### StrReplace 使用规范
-- **使用前必须先 Read 文件**，确认 old_string 与文件内容完全一致（包括缩进、空格、换行符）
-- Windows 下文件可能含 CRLF 换行符，导致 StrReplace 匹配失败
-- **多处替换失败时，直接用 Write 工具覆盖整个文件**，不要反复尝试 StrReplace
-- 修改较大时（超过 20 行），优先用 Write 而非 StrReplace，避免定位失败
+### WSL 命令超时处理
+- `grep` 和 `wc -l` 在 WSL 中都可能超时（WSL 环境不稳定）
+- **WSL 验证不是必须的**：cp 命令返回 DONE 即可信任同步成功，不必再用 WSL 命令验证
+- 验证优先用 Windows 侧已知信息（Write 写入的行数）而非 WSL 命令
+- 单条 WSL 命令超时后**不重试**，直接跳过验证步骤继续后续流程
+- 超时原因通常是 WSL 启动慢或 `.wslconfig` 配置问题，非文件问题
+
+### StrReplace 失败的根本原因与应对
+- **根本原因**：Windows 下文件含 CRLF（`\r\n`）换行符，StrReplace 的 old_string 用 LF（`\n`）匹配，永远找不到
+- **判断方法**：StrReplace 报 `old_string not found` 即可确认是换行符问题，不需要调试
+- **正确应对**：立即改用 Write 工具写入完整文件内容，**不要再尝试调整 old_string**
+- **错误做法**：反复尝试不同的 old_string 变体、增减空格、缩小匹配范围——这些都不解决 CRLF 问题
+
+### 文件修改策略：优先 Write，慎用 StrReplace
+
+**Write 是默认策略**，以下情况直接用 Write 覆盖整个文件：
+- 修改量超过 10 行
+- 文件在 Windows 环境下创建或编辑过（可能含 CRLF）
+- 需要同时修改文件多处
+- 任何 StrReplace 失败过一次之后
+
+**StrReplace 仅适用于**：
+- 改动极小（1-5 行），且 old_string 绝对唯一
+- 文件刚被 Read 过且确认是 LF 换行符
+- **第一次 StrReplace 失败后立即切换 Write，不要重试**
 
 ### Write 工具使用规范
-- 写入前先 Read 原文件，保留不需要修改的部分原样复制
-- 写入后立即 Read 回来验证关键行（或用 grep 确认），确保内容正确落盘
+- Write 前先 Read 原文件，把不改动的部分**原样复制**到新内容中
+- Write 后用 `wc -l` 验证行数是否与预期一致（而非 grep，避免超时）
+- **Write 写完后立即 cp 同步到 WSL**，顺序：Write → cp → wc -l验证
 - 中文路径下 Write 正常工作，无需特殊处理
 
 ### 并行读取
 - 任务开始时，把所有相关文件（routers、services、models）**一次性并行 Read**，减少来回等待
-- 不要边读边改，先全部读完再开始修改
+- 不要边读边改，先全部读完、分析完再开始修改
+- 并行读取清单：`library.py`、`download_service.py`、`ai.py`、`settings.py`、`prompts.py`、`llm_service.py`、`models.py`

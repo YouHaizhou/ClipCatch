@@ -3,9 +3,9 @@
 # Windows 便携 zip 包（无需代码签名，无需 Developer Mode）
 # asar 保护源码
 # ============================================================
-appId: com.videoai.desktop
-productName: VideoAI
-copyright: Copyright \u00a9 2026 VideoAI
+appId: com.clipcatch.desktop
+productName: ClipCatch
+copyright: Copyright © 2026 ClipCatch
 
 # asar 打包：将所有源码压缩为 app.asar，防止直接读取
 asar: true

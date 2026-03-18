@@ -2,11 +2,15 @@
 
 ## 验收记录
 - 2026-03-18：P2-feature-Desktop单窗口与系统集成 ✅ 完成
+- 2026-03-18：P1-bugfix-TitleBar品牌名称更新 ✅ 完成
 
 ## 当前任务
 - 无
 
 ## 最近完成
+- 2026-03-18-P1-bugfix-TitleBar品牌名称更新
+  - TitleBar 品牌名从 VideoAI 改为 ClipCatch（带品牌色小方块装饰）
+  - main.ts 窗口 title 改为 ClipCatch
 - 2026-03-18-P2-feature-Desktop单窗口与系统集成
   - 单实例锁（防多窗口）
   - 关闭确认弹窗

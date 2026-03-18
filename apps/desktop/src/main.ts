@@ -95,7 +95,7 @@ function waitForBackend(maxRetries = 30): Promise<void> {
 // ---------- 3. 创建主窗口 ----------
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
-    title: 'VideoAI Desktop',
+    title: 'ClipCatch',
     width: 1280,
     height: 800,
     minWidth: 960,

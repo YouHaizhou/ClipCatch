@@ -1,4 +1,4 @@
-﻿// WorkspacePage — AI 工作台
+// WorkspacePage — AI 工作台
 // 进度状态持久化到 aiStore，切换页面不丢失
 import { useEffect, useState } from 'react'
 import { Cpu, Play, ChevronDown, Loader2, CheckCircle, XCircle, RotateCcw, Square, Edit2, Eye } from 'lucide-react'
@@ -84,7 +84,11 @@ export default function WorkspacePage() {
         } else if (event.type === 'token') {
           useAiStore.setState((s) => ({ streamBuffer: s.streamBuffer + (event.content ?? '') }))
         } else if (event.type === 'done') {
-          setState({ stage: 'completed', stageMsg: `生成完成，共 ${event.wordCount ?? 0} 字`, isStreaming: false, currentNoteId: event.noteId ?? null, _sse: null })
+          // 兼容后端 snake_case 字段名
+          const ev = event as any
+          const wordCount = ev.wordCount ?? ev.word_count ?? 0
+          const noteId = ev.noteId ?? ev.note_id ?? null
+          setState({ stage: 'completed', stageMsg: `生成完成，共 ${wordCount} 字`, isStreaming: false, currentNoteId: noteId, _sse: null })
           sse.close()
           showToast('success', 'AI 笔记生成完成')
         } else if (event.type === 'error') {

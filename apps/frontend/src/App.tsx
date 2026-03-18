@@ -9,8 +9,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 import Sidebar from '@/components/Sidebar'
 import TitleBar from '@/components/TitleBar'
 import SearchPage from '@/pages/SearchPage'
-import DownloadPage from '@/pages/DownloadPage'
-import LibraryPage from '@/pages/LibraryPage'
+import ResourcePage from '@/pages/ResourcePage'
 import WorkspacePage from '@/pages/WorkspacePage'
 import SettingsPage from '@/pages/SettingsPage'
 import Toast from '@/components/Toast'
@@ -39,8 +38,7 @@ export default function App() {
           {apiReady ? (
             <>
               <div className={activePage === 'search'    ? 'h-full' : 'hidden'}><SearchPage /></div>
-              <div className={activePage === 'download'  ? 'h-full' : 'hidden'}><DownloadPage /></div>
-              <div className={activePage === 'library'   ? 'h-full' : 'hidden'}><LibraryPage /></div>
+              <div className={activePage === 'library'   ? 'h-full' : 'hidden'}><ResourcePage /></div>
               <div className={activePage === 'workspace' ? 'h-full' : 'hidden'}><WorkspacePage /></div>
               <div className={activePage === 'settings'  ? 'h-full' : 'hidden'}><SettingsPage /></div>
             </>

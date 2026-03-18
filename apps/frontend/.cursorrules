@@ -72,7 +72,93 @@ if (window.electronAPI && 'openExternal' in window.electronAPI) {
 - **Shell**：Windows PowerShell（用 `;` 分隔命令，不用 `&&`）
 - **启动**：`cd apps/frontend; pnpm dev`（已安装依赖，无需 install）
 - **端口**：5173
-- **类型检查**：`pnpm type-check`
+- **类型检查**：`npx tsc --noEmit 2>&1 | Select-Object -First 40`（`pnpm type-check` 可能超时）
+
+## ⚠️ 文件操作避坑指南（必读，血泪教训）
+
+### 优先级决策树
+
+```
+需要修改文件？
+├── 小改动（1-3行，无中文，无特殊字符）→ 尝试 StrReplace
+│   └── 失败了？→ 立即改用 Python 脚本文件，不要反复重试
+├── 大改动 / 新文件 / 含中文 → 直接用 Python 脚本文件
+└── 超大文件（>13000字符）→ 分段 Python 脚本追加（open + 'a'）
+```
+
+### StrReplace 失败的根因（不要反复重试同一方式）
+1. **换行符**：Windows 文件是 CRLF，`old_string` 用 LF 会匹配失败
+2. **中文乱码**：含中文的 `old_string` 在 PowerShell 传参时乱码
+3. **特殊字符**：`` ` ``、`$`、`{}`、`'` 在 PowerShell 里需要繁琐转义
+
+**结论：StrReplace 失败一次后，立即切换到 Python 脚本文件方案，不要继续尝试。**
+
+### Python 脚本文件操作（最可靠方案）
+
+```python
+# -*- coding: utf-8 -*-
+# 写脚本到项目根目录，执行完删除
+f = r'g:\绝对路径\文件.tsx'
+with open(f, 'r', encoding='utf-8') as fp:
+    lines = fp.readlines()
+
+# 用英文关键词定位行号，避免中文匹配
+for i, l in enumerate(lines):
+    if 'handleCardDownload' in l:  # 英文标识符定位
+        target_line = i
+        break
+
+# 按行号操作
+lines[target_line:target_line+7] = ['  // 新内容\n']
+
+with open(f, 'w', encoding='utf-8') as fp:
+    fp.writelines(lines)
+print('Done')
+```
+
+执行方式：
+```powershell
+# 写入脚本
+# （用 Write 工具写 .py 文件）
+# 执行
+python fix_xxx.py
+# 执行完立即删除
+Remove-Item fix_xxx.py
+```
+
+### 禁止使用 `python -c "..."` 内联脚本
+原因：PowerShell 中内联 Python 脚本遇到中文字符、`$`、`{}`、引号时会报 SyntaxError 或乱码。
+**一律写 `.py` 文件再执行。**
+
+### 字符串匹配技巧
+- **优先用英文标识符定位**（函数名、变量名、import 语句），不依赖中文
+- 中文内容用 unicode 转义写进脚本：`'\u5df2\u6682\u505c'` = `'已暂停'`
+- 正则表达式含反斜杠时，Python 里用 `r''` 或双重转义 `\\`
+
+### Write 工具分段写大文件
+- Write 工具限制 13000 字符
+- 超出时：先 `Write` 写第一段，再用 Python 脚本 `open(f, 'a')` 追加后续段
+- 追加完成后必须 `Read` 验证末尾无重复闭合标签
+
+### Import 修改注意事项
+- 修改 import 前确认：被移除的类型/函数是否还有其他引用
+- 用 Python 脚本按行过滤删除重复 import（不要用 `-replace` 大范围替换）
+- 新增 import 时检查是否已存在，避免重复
+
+### 文件操作后必做
+- 每次批量修改后运行：`npx tsc --noEmit 2>&1 | Select-Object -First 40`
+- 发现错误立即修复，不要积压
+
+## 🔁 自动更新 Rule 规范
+
+**触发条件**：任务执行过程中出现以下情况时，任务完成后必须更新本文件（`.cursorrules`）：
+- 某个操作失败重试超过 2 次
+- 发现新的 Windows/PowerShell 环境陷阱
+- 发现某类文件操作的更高效方式
+- 类型错误有规律性（同一类问题反复出现）
+
+**更新方式**：用 Write 工具直接覆写 `.agent/.cursorrules` 或本文件，在对应章节补充经验。
+**格式**：在相关章节追加条目，注明触发场景，给出可复用的解决模板。
 
 ## 📚 初始化必读
 

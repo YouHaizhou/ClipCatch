@@ -2,7 +2,7 @@
 // 下载任务状态管理（Zustand）
 // ============================================================
 import { create } from 'zustand'
-import type { DownloadTask, DownloadProgressEvent } from '@/types'
+import type { DownloadTask } from '@/types'
 import { apiPost, apiPatch, createSSE } from '@/services/api'
 
 interface DownloadStore {

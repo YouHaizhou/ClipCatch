@@ -114,8 +114,6 @@ async def start_download(
     finally:
         db1.close()
 
-    # 格式回退链：优先带 ffmpeg 合并的高质量，回退到单流无需合并
-    # ffmpeg_location 注入后，合并格式也能正常工作
     format_map = {
         '1080p':      'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]/best',
         '720p':       'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]/best',
@@ -160,8 +158,11 @@ async def start_download(
         'no_warnings': True,
         'merge_output_format': 'mp4',
         'noplaylist': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        'extractor_args': {'youtube': {'player_client': ['web', 'android']}},
     }
-    # 仅在找到 ffmpeg 时注入路径（空字符串会让 yt-dlp 报错）
     if ffmpeg_dir:
         ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
@@ -253,16 +254,38 @@ def _find_downloaded_file(download_dir: Path, info: Optional[dict]) -> Optional[
 
 
 async def extract_video_info(url: str) -> dict:
-    ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
+    """解析视频链接元数据，增强 YouTube 兼容性"""
+    ffmpeg_dir = _find_ffmpeg_dir()
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+        'extract_flat': False,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        'extractor_args': {'youtube': {'player_client': ['web', 'android']}},
+    }
+    if ffmpeg_dir:
+        ydl_opts['ffmpeg_location'] = ffmpeg_dir
+
     loop = asyncio.get_event_loop()
 
     def run():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            return ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=False)
+            if info and info.get('_type') == 'playlist':
+                entries = info.get('entries', [])
+                info = entries[0] if entries else None
+            return info
 
-    info = await loop.run_in_executor(None, run)
+    try:
+        info = await loop.run_in_executor(None, run)
+    except Exception as e:
+        raise ValueError(f'yt-dlp 解析失败: {e}')
+
     if not info:
-        raise ValueError('无法解析该链接')
+        raise ValueError('无法解析该链接，请检查链接是否有效')
 
     platform = 'youtube' if 'youtube.com' in url or 'youtu.be' in url \
         else 'bilibili' if 'bilibili.com' in url else 'other'

@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { Search, SlidersHorizontal, X, Loader2, Youtube } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiPost } from '@/services/api'
@@ -15,20 +15,24 @@ const QUALITY_OPTIONS: { value: VideoQuality; label: string }[] = [
   { value: 'audio_only', label: '仅音频' },
 ]
 
-type Platform = 'all' | 'youtube' | 'bilibili'
+const PLATFORMS = [
+  { value: 'all',     label: '全网' },
+  { value: 'youtube', label: 'YouTube' },
+  { value: 'bilibili',label: 'Bilibili' },
+  { value: 'twitter', label: 'Twitter/X' },
+] as const
+type Platform = typeof PLATFORMS[number]['value']
 
 export default function SearchPage() {
   const { setActivePage } = useSettingsStore()
   const { addTask } = useDownloadStore()
   const [query, setQuery] = useState('')
   const [platform, setPlatform] = useState<Platform>('all')
-  const [pasteUrl, setPasteUrl] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<SearchFilters>({ sort: 'relevance' })
   const [results, setResults] = useState<VideoInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
-  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null)
   const [qualityMenuVideo, setQualityMenuVideo] = useState<VideoInfo | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -49,18 +53,6 @@ export default function SearchPage() {
   const handleFilterChange = (newF: SearchFilters) => { setFilters(newF); if (searched) doSearch(query, platform, newF) }
   const handlePlatformChange = (p: Platform) => { setPlatform(p); if (searched) doSearch(query, p, filters) }
 
-  const handlePasteDownload = async () => {
-    const url = pasteUrl.trim(); if (!url) return
-    setDownloadingUrl(url)
-    try {
-      await addTask(url, '720p')
-      showToast('success', '已加入下载队列')
-      setPasteUrl('')
-      setActivePage('download')
-    } catch (e) { showToast('error', String(e)) }
-    finally { setDownloadingUrl(null) }
-  }
-
   const handleCardDownload = (video: VideoInfo) => {
     setQualityMenuVideo(video)
   }
@@ -70,7 +62,7 @@ export default function SearchPage() {
     try {
       await addTask(video.url, quality)
       showToast('success', `『${video.title.slice(0, 20)}』已加入下载队列`)
-      setActivePage('download')
+      setActivePage('library')
     } catch (e) { showToast('error', String(e)) }
   }
 
@@ -105,11 +97,15 @@ export default function SearchPage() {
       )}
       <div className="px-6 pt-5 pb-3 flex flex-col gap-3 border-b border-border">
         <div className="flex gap-2">
-          <select value={platform} onChange={e => handlePlatformChange(e.target.value as Platform)}
-            className="px-3 py-2 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary transition-colors">
+          <select
+            value={platform}
+            onChange={e => handlePlatformChange(e.target.value as Platform)}
+            className="h-11 px-3 rounded-xl bg-card border border-border text-sm outline-none focus:border-primary transition-colors cursor-pointer"
+          >
             <option value="all">全网</option>
             <option value="youtube">YouTube</option>
             <option value="bilibili">Bilibili</option>
+            <option value="twitter">Twitter/X</option>
           </select>
           <div className="flex-1 relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -160,17 +156,6 @@ export default function SearchPage() {
             </div>
           </div>
         )}
-        <div className="flex gap-2">
-          <input type="text" value={pasteUrl} onChange={e => setPasteUrl(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handlePasteDownload()}
-            placeholder="或直接粘贴视频链接下载（YouTube / Bilibili / 其他平台）"
-            data-selectable="true"
-            className="flex-1 px-3 py-2 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary transition-colors" />
-          <button onClick={handlePasteDownload} disabled={!pasteUrl.trim() || !!downloadingUrl}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40">
-            {downloadingUrl ? <Loader2 size={15} className="animate-spin" /> : '直接下载'}
-          </button>
-        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
         {loading && <div className="flex items-center justify-center h-40"><Loader2 size={32} className="animate-spin text-primary" /></div>}
@@ -190,7 +175,7 @@ export default function SearchPage() {
         {!loading && !searched && (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground gap-2">
             <Youtube size={40} className="opacity-20" />
-            <p className="text-sm">输入关键词搜索，或粘贴视频链接直接下载</p>
+            <p className="text-sm">输入关键词搜索视频</p>
           </div>
         )}
       </div>

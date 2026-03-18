@@ -15,9 +15,14 @@ export default function TitleBar() {
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       {/* 应用名称 */}
-      <span className="px-4 text-xs font-semibold text-muted-foreground tracking-widest uppercase">
-        VideoAI
-      </span>
+      <div className="px-4 flex items-center gap-2">
+        {/* 品牌色小方块 */}
+        <div className="w-4 h-4 rounded bg-primary/80 shrink-0" />
+        {/* 品牌名 */}
+        <span className="text-xs font-bold text-foreground tracking-tight">
+          Clip<span className="text-primary">Catch</span>
+        </span>
+      </div>
 
       <div className="flex-1" />
 

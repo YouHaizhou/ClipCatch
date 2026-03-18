@@ -61,7 +61,7 @@ export default function DownloadPage() {
 
   // 切换到下载页时立即刷新
   useEffect(() => {
-    if (activePage === 'download') fetchTasks()
+    if (activePage === 'library') fetchTasks()
   }, [activePage])
 
   // 轮询进行中的任务

@@ -174,7 +174,9 @@ async def _run_ai_pipeline(
         _push(task_id, {
             'type': 'done',
             'note_id': note.id,
+            'noteId': note.id,
             'word_count': word_count,
+            'wordCount': word_count,
         })
 
     except Exception as e:

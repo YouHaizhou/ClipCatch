@@ -18,6 +18,22 @@ from services.download_service import (
 router = APIRouter()
 
 
+def _friendly_download_error(err: str) -> str:
+    """将 yt-dlp 原始错误转为用户友好的中文提示"""
+    if 'Sign in' in err or 'login' in err.lower() or 'LOGIN_REQUIRED' in err:
+        return '该视频需要登录才能下载'
+    elif 'Private video' in err:
+        return '该视频为私密视频，无法下载'
+    elif 'not available' in err.lower() or 'unavailable' in err.lower():
+        return '该视频在当前地区不可用'
+    elif 'copyright' in err.lower():
+        return '该视频因版权原因无法下载'
+    elif 'removed' in err.lower() or 'deleted' in err.lower():
+        return '该视频已被删除'
+    else:
+        return f'链接解析失败: {err}'
+
+
 @router.post('/download/tasks')
 async def create_download_task(body: dict, db: Session = Depends(get_db)):
     """创建下载任务：解析链接元数据 -> 写入 DB -> 启动后台下载"""
@@ -31,7 +47,7 @@ async def create_download_task(body: dict, db: Session = Depends(get_db)):
         try:
             info = await extract_video_info(url)
         except Exception as e:
-            return {'code': 1, 'message': f'链接解析失败: {e}'}
+            return {'code': 1, 'message': _friendly_download_error(str(e))}
 
         # 检查是否已存在相同 URL 的视频
         video = db.query(Video).filter(Video.url == url).first()
