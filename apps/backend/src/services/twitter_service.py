@@ -191,19 +191,20 @@ async def search_twitter_videos(query: str, limit: int = 12) -> list:
                     best = max(videos, key=lambda v: v.bitrate or 0)
                     video_url = best.url or ''
                     duration = int(best.duration_millis / 1000) if best.duration_millis else 0
-            
+
             if tweet.media and tweet.media.photos:
                 if tweet.media.photos:
                     thumbnail_url = tweet.media.photos[0].url or ''
 
             # 推文页面链接
             tweet_url = f'https://twitter.com/{tweet.user.username}/status/{tweet.id}'
-            
+
             # 标题用推文文本（截断）
             title = tweet.rawContent or ''
             if len(title) > 100:
                 title = title[:97] + '...'
 
+            # 无论有无视频直链都保留推文，_direct_video_url 为空时由 yt-dlp 从推文页提取
             results.append({
                 'id': str(tweet.id),
                 'title': title or f'@{tweet.user.username} 的推文',

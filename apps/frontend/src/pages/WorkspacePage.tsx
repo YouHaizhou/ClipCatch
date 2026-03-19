@@ -5,6 +5,7 @@ import { Cpu, Play, ChevronDown, Loader2, CheckCircle, XCircle, RotateCcw, Squar
 import { cn, formatDuration } from '@/lib/utils'
 import { apiPost, apiGet, createSSE, proxyImageUrl } from '@/services/api'
 import { useAiStore } from '@/store/aiStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { showToast } from '@/components/Toast'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
 import ExportToolbar from '@/components/ExportToolbar'
@@ -68,6 +69,15 @@ export default function WorkspacePage() {
 
   const handleStart = async () => {
     if (!selectedVideo) { showToast('error', '请先选择一个视频'); return }
+    if (mode === 'multimodal') {
+      const settings = useSettingsStore.getState().settings as any
+      const hasOpenAI = settings?.api_key_openai || settings?.hasOpenaiKey
+      const hasGemini = settings?.api_key_gemini || settings?.hasGeminiKey
+      if (!hasOpenAI && !hasGemini) {
+        showToast('error', '多模态模式需要配置 OpenAI 或 Gemini API Key，请前往设置页面配置')
+        return
+      }
+    }
     reset()
     setEditMode(false)
     setState({ stage: 'queued', stageMsg: '正在创建任务...' })

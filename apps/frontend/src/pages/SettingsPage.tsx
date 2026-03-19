@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Settings, CheckCircle, XCircle, Loader2, FolderOpen, Trash2, ChevronRight, Cpu, Twitter, Plus, UserX } from 'lucide-react'
+import { Settings, CheckCircle, XCircle, Loader2, FolderOpen, Trash2, ChevronRight, Cpu, Twitter, UserX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
-import { apiPost, apiGet } from '@/services/api'
+import { apiPost, apiGet, apiDelete } from '@/services/api'
 import { showToast } from '@/components/Toast'
 
 type TabKey = 'api' | 'storage' | 'whisper' | 'twitter'
@@ -15,11 +15,11 @@ interface WhisperStatus {
 }
 
 const API_CONFIGS = [
-  { provider: 'deepseek' as const, label: 'DeepSeek API Key', placeholder: 'sk-...', hint: '用于 AI 摘要生成，platform.deepseek.com 获取，性价比最高', settingKey: 'api_key_deepseek' },
-  { provider: 'openai' as const, label: 'OpenAI API Key', placeholder: 'sk-...', hint: '支持 GPT-4o，platform.openai.com 获取', settingKey: 'api_key_openai' },
-  { provider: 'groq' as const, label: 'Groq API Key', placeholder: 'gsk_...', hint: '免费额度大，速度极快，支持 Whisper 转写，console.groq.com 获取', settingKey: 'api_key_groq' },
-  { provider: 'gemini' as const, label: 'Google Gemini API Key', placeholder: 'AIza...', hint: 'Google AI Studio 获取，aistudio.google.com', settingKey: 'api_key_gemini' },
-  { provider: 'zhipu' as const, label: '智谱 AI API Key', placeholder: '智谱 GLM-4 备用 Key', hint: 'open.bigmodel.cn 获取，可选备用', settingKey: 'api_key_zhipu' },
+  { provider: 'deepseek' as const, label: 'DeepSeek API Key', placeholder: 'sk-...', hint: '\u7528\u4e8e AI \u6458\u8981\u751f\u6210\uff0cplatform.deepseek.com \u83b7\u53d6\uff0c\u6027\u4ef7\u6bd4\u6700\u9ad8', settingKey: 'api_key_deepseek' },
+  { provider: 'openai' as const, label: 'OpenAI API Key', placeholder: 'sk-...', hint: '\u652f\u6301 GPT-4o\uff0cplatform.openai.com \u83b7\u53d6', settingKey: 'api_key_openai' },
+  { provider: 'groq' as const, label: 'Groq API Key', placeholder: 'gsk_...', hint: '\u514d\u8d39\u989d\u5ea6\u5927\uff0c\u901f\u5ea6\u6781\u5feb\uff0c\u652f\u6301 Whisper \u8f6c\u5199\uff0cconsole.groq.com \u83b7\u53d6', settingKey: 'api_key_groq' },
+  { provider: 'gemini' as const, label: 'Google Gemini API Key', placeholder: 'AIza...', hint: 'Google AI Studio \u83b7\u53d6\uff0caistudio.google.com', settingKey: 'api_key_gemini' },
+  { provider: 'zhipu' as const, label: '\u667a\u8c31 AI API Key', placeholder: '\u667a\u8c31 GLM-4 \u5907\u7528 Key', hint: 'open.bigmodel.cn \u83b7\u53d6\uff0c\u53ef\u9009\u5907\u7528', settingKey: 'api_key_zhipu' },
 ]
 
 export default function SettingsPage() {
@@ -32,8 +32,7 @@ export default function SettingsPage() {
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(null)
   const [whisperSaving, setWhisperSaving] = useState(false)
   const [twitterAccounts, setTwitterAccounts] = useState<{ username: string; active: boolean }[]>([])
-  const [twitterForm, setTwitterForm] = useState({ username: '', password: '', email: '', email_password: '', cookies: '' })
-  const [twitterAdding, setTwitterAdding] = useState(false)
+  const [twitterForm, setTwitterForm] = useState({ username: '' })
   const [twitterLoginLoading, setTwitterLoginLoading] = useState(false)
 
   useEffect(() => { loadStorageInfo(); loadWhisperStatus(); loadTwitterStatus() }, [])
@@ -46,73 +45,34 @@ export default function SettingsPage() {
   }
 
   const handleOneClickLogin = async () => {
-    if (!window.electronAPI?.twitterLogin) {
-      showToast('error', '仅 Electron 环境支持一键登录'); return
+    if (!(window.electronAPI as any)?.twitterLogin) {
+      showToast('error', '\u4ec5 Electron \u73af\u5883\u652f\u6301\u4e00\u952e\u767b\u5f55'); return
     }
     setTwitterLoginLoading(true)
     try {
-      const result = await window.electronAPI.twitterLogin()
+      const result = await (window.electronAPI as any).twitterLogin()
       if (result.success && result.cookies && result.auth_token) {
-        // 优先用已填写的用户名，否则从 cookie 里找
         const username = twitterForm.username.trim() ||
-          (result.cookies && (result.cookies['screen_name'] || result.cookies['twid'] || '').replace('u%3D','')) ||
+          (result.cookies && (result.cookies['screen_name'] || result.cookies['twid'] || '').replace('u%3D', '')) ||
           'twitter_user'
         const res = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', {
-          username,
-          password: '',
-          email: '',
-          email_password: '',
+          username, password: '', email: '', email_password: '',
           cookies: JSON.stringify(result.cookies),
         })
         if (res.success) {
           showToast('success', res.message)
-          setTwitterForm({ username: '', password: '', email: '', email_password: '', cookies: '' })
+          setTwitterForm({ username: '' })
           await loadTwitterStatus()
-        } else {
-          showToast('error', res.message)
-        }
-      } else {
-        showToast('error', result.message || '登录失败')
-      }
+        } else { showToast('error', res.message) }
+      } else { showToast('error', result.message || '\u767b\u5f55\u5931\u8d25') }
     } catch (e) { showToast('error', String(e)) }
     finally { setTwitterLoginLoading(false) }
   }
 
-  const handleAddTwitterAccount = async () => {
-    if (!twitterForm.username) {
-      showToast('error', '请填写用户名'); return
-    }
-    if (!twitterForm.cookies && (!twitterForm.password || !twitterForm.email)) {
-      showToast('error', '请填写 Cookie 字符串，或同时填写密码和邮箱'); return
-    }
-    setTwitterAdding(true)
-    try {
-      const result = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', {
-        username: twitterForm.username,
-        password: twitterForm.password,
-        email: twitterForm.email,
-        email_password: twitterForm.email_password,
-        cookies: twitterForm.cookies,
-      })
-      if (result.success) {
-        showToast('success', result.message)
-        setTwitterForm({ username: '', password: '', email: '', email_password: '', cookies: '' })
-        await loadTwitterStatus()
-      } else {
-        showToast('error', result.message)
-      }
-    } catch (e) { showToast('error', String(e)) }
-    finally { setTwitterAdding(false) }
-  }
-
   const handleRemoveTwitterAccount = async (username: string) => {
     try {
-      await fetch('http://127.0.0.1:57891/api/twitter/account', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
-      })
-      showToast('success', `已删除账号 @${username}`)
+      await apiDelete<{ success: boolean }>('/api/twitter/account', { username })
+      showToast('success', `\u5df2\u5220\u9664\u8d26\u53f7 @${username}`)
       await loadTwitterStatus()
     } catch (e) { showToast('error', String(e)) }
   }
@@ -120,7 +80,7 @@ export default function SettingsPage() {
   const loadStorageInfo = async () => {
     try {
       const data = await apiGet<Record<string, string>>('/api/settings')
-      setStorageInfo({ downloadDir: data.download_dir ?? '', exportDir: data.export_dir ?? '', cacheSize: data.cache_size ?? '计算中...' })
+      setStorageInfo({ downloadDir: data.download_dir ?? '', exportDir: data.export_dir ?? '', cacheSize: data.cache_size ?? '\u8ba1\u7b97\u4e2d...' })
     } catch {}
   }
 
@@ -134,17 +94,15 @@ export default function SettingsPage() {
 
   const handleSaveAndTest = async (provider: typeof API_CONFIGS[number]['provider'], settingKey: string) => {
     const value = keyValues[settingKey]
-    if (!value?.trim()) { showToast('error', '请先填写 API Key'); return }
+    if (!value?.trim()) { showToast('error', '\u8bf7\u5148\u586b\u5199 API Key'); return }
     setSavingKey(settingKey)
     try {
       await apiPost('/api/settings', { [settingKey]: value.trim() })
       const result = await testConnection(provider)
       if (result.status === 'ok') {
-        showToast('success', provider + ' 连接成功，延迟 ' + (result.latencyMs ?? '--') + 'ms')
+        showToast('success', provider + ' \u8fde\u63a5\u6210\u529f\uff0c\u5ef6\u8fdf ' + (result.latencyMs ?? '--') + 'ms')
         await loadSettings()
-      } else {
-        showToast('error', result.message ?? '连接失败')
-      }
+      } else { showToast('error', result.message ?? '\u8fde\u63a5\u5931\u8d25') }
     } catch (e) { showToast('error', String(e)) }
     finally { setSavingKey(null) }
   }
@@ -154,29 +112,29 @@ export default function SettingsPage() {
     const dir = await window.electronAPI.selectDirectory()
     if (!dir) return
     await apiPost('/api/settings', { [type === 'download' ? 'download_dir' : 'export_dir']: dir })
-    showToast('success', '目录已更新')
+    showToast('success', '\u76ee\u5f55\u5df2\u66f4\u65b0')
     await loadStorageInfo()
   }
 
   const handleClearCache = async () => {
-    try { await apiPost('/api/settings/clear-cache', {}); showToast('success', '缓存已清理'); await loadStorageInfo() }
-    catch { showToast('error', '清理失败') }
+    try { await apiPost('/api/settings/clear-cache', {}); showToast('success', '\u7f13\u5b58\u5df2\u6e05\u7406'); await loadStorageInfo() }
+    catch { showToast('error', '\u6e05\u7406\u5931\u8d25') }
   }
 
   const handleSaveWhisperPath = async () => {
-    if (!whisperPath.trim()) { showToast('error', '请填写模型路径'); return }
+    if (!whisperPath.trim()) { showToast('error', '\u8bf7\u586b\u5199\u6a21\u578b\u8def\u5f84'); return }
     setWhisperSaving(true)
     try {
       await apiPost('/api/settings/whisper-unload', {})
       await apiPost('/api/settings', { whisper_model_path: whisperPath.trim() })
       await loadWhisperStatus()
-      showToast('success', '模型路径已保存')
+      showToast('success', '\u6a21\u578b\u8def\u5f84\u5df2\u4fdd\u5b58')
     } catch (e) { showToast('error', String(e)) }
     finally { setWhisperSaving(false) }
   }
 
   const handleSelectWhisperDir = async () => {
-    if (!window.electronAPI) { showToast('error', '仅 Electron 环境支持'); return }
+    if (!window.electronAPI) { showToast('error', '\u4ec5 Electron \u73af\u5883\u652f\u6301'); return }
     const dir = await window.electronAPI.selectDirectory()
     if (dir) setWhisperPath(dir)
   }
@@ -190,12 +148,11 @@ export default function SettingsPage() {
   }
 
   const TABS: [TabKey, string][] = [
-    ['api', 'API 配置'],
-    ['storage', '存储管理'],
-    ['whisper', '语音转写'],
-    ['twitter', 'Twitter 账号'],
+    ['api', 'API \u914d\u7f6e'],
+    ['storage', '\u5b58\u50a8\u7ba1\u7406'],
+    ['whisper', '\u672c\u5730\u6a21\u578b'],
+    ['twitter', 'Twitter \u8d26\u53f7'],
   ]
-
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-4 border-b border-border flex items-center gap-2">
@@ -213,10 +170,9 @@ export default function SettingsPage() {
           ))}
         </nav>
         <div className="flex-1 overflow-y-auto p-6">
-
           {activeTab === 'api' && (
             <div className="flex flex-col gap-6 max-w-xl">
-              <p className="text-xs text-muted-foreground">API Key 加密存储在本地数据库，不上传至任何服务器。</p>
+              <p className="text-xs text-muted-foreground">API Key 加密存储在本地，不上传任何服务器。</p>
               {API_CONFIGS.map((cfg) => (
                 <div key={cfg.provider} className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">{statusIcon(cfg.provider)}<label className="text-sm font-medium">{cfg.label}</label></div>
@@ -236,7 +192,6 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
-
           {activeTab === 'storage' && (
             <div className="flex flex-col gap-6 max-w-xl">
               {([{ type: 'download' as const, label: '视频下载目录', val: storageInfo?.downloadDir },
@@ -259,24 +214,21 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
-
           {activeTab === 'whisper' && (
             <div className="flex flex-col gap-6 max-w-xl">
               <div className="p-4 rounded-xl bg-muted/50 border border-border flex flex-col gap-3">
-                <div className="flex items-center gap-2 font-medium text-sm"><Cpu size={15} className="text-primary" />本地 Whisper 模型（免费，无需联网）</div>
+                <div className="flex items-center gap-2 font-medium text-sm"><Cpu size={15} className="text-primary" />本地 Whisper 模型（免费无需联网）</div>
                 <div className="text-xs text-muted-foreground space-y-1">
                   <p>使用 faster-whisper 在本地运行，中文识别效果好，完全免费。</p>
                   <p>推荐模型：<span className="font-mono text-foreground">faster-whisper-small</span>（约 466MB）</p>
                   <p>HuggingFace：<span className="text-primary">https://huggingface.co/Systran/faster-whisper-small</span></p>
-                  <p>ModelScope（国内）：<span className="text-primary">https://modelscope.cn/models/pkufool/faster-whisper-small</span></p>
+                  <p>ModelScope：<span className="text-primary">https://modelscope.cn/models/pkufool/faster-whisper-small</span></p>
                 </div>
               </div>
               {whisperStatus && (
                 <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg text-sm border',
                   whisperStatus.available ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400')}>
-                  {whisperStatus.available
-                    ? <><CheckCircle size={14} />模型已就绪（{whisperStatus.model_size}）</>
-                    : <><XCircle size={14} />{whisperStatus.error || '模型未配置'}</>}
+                  {whisperStatus.available ? <><CheckCircle size={14} />模型已就绪（{whisperStatus.model_size}）</> : <><XCircle size={14} />{whisperStatus.error || '模型未配置'}</>}
                 </div>
               )}
               <div className="flex flex-col gap-2">
@@ -293,9 +245,19 @@ export default function SettingsPage() {
                   {whisperSaving ? '验证中...' : '保存模型路径'}
                 </button>
               </div>
+              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex flex-col gap-3">
+                <div className="flex items-center gap-2 font-medium text-sm"><Cpu size={15} className="text-primary" />多模态视觉分析 API</div>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>多模态模式需要配置 OpenAI 或 Google Gemini API Key。</p>
+                  <p>配置后可在 AI 工作台选择「多模态」模式。</p>
+                </div>
+                <button onClick={() => setActiveTab('api')}
+                  className="self-start px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90">
+                  前往 API 配置 →
+                </button>
+              </div>
             </div>
           )}
-
           {activeTab === 'twitter' && (
             <div className="flex flex-col gap-6 max-w-xl">
               <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-200 flex flex-col gap-1.5">
@@ -321,48 +283,17 @@ export default function SettingsPage() {
                 </div>
               )}
               <div className="flex flex-col gap-3">
-                <div className="p-3 rounded-lg bg-sky-500/10 border border-sky-500/30 text-xs text-sky-200 flex flex-col gap-1">
-                  <p className="font-semibold text-sky-300">推荐：Cookie 方式（更稳定，无需代理）</p>
-                  <p>1. 浏览器打开 twitter.com 并登录</p>
-                  <p>2. 按 F12 → Application → Cookies → twitter.com</p>
-                  <p>3. 找到 <span className="font-mono text-sky-300">auth_token</span> 和 <span className="font-mono text-sky-300">ct0</span>，格式填写：<span className="font-mono">auth_token=xxx; ct0=yyy</span></p>
-                </div>
+                <input type="text" placeholder="用户名（不含@）" data-selectable="true"
+                  value={twitterForm.username} onChange={e => setTwitterForm(p => ({...p, username: e.target.value}))}
+                  className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
                 <button onClick={handleOneClickLogin} disabled={twitterLoginLoading}
                   className="flex items-center gap-2 px-4 py-3 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 disabled:opacity-40 transition-colors w-full justify-center">
                   {twitterLoginLoading ? <Loader2 size={15} className="animate-spin" /> : <Twitter size={15} />}
                   {twitterLoginLoading ? '等待浏览器登录...' : '一键登录 Twitter（推荐）'}
                 </button>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="flex-1 h-px bg-border" />
-                  <span>或手动填写 Cookie / 账号密码</span>
-                  <span className="flex-1 h-px bg-border" />
-                </div>
-                <label className="text-sm font-medium">添加 Twitter 账号</label>
-                <input type="text" placeholder="用户名（不含@）必填" data-selectable="true"
-                  value={twitterForm.username} onChange={e => setTwitterForm(p => ({...p, username: e.target.value}))}
-                  className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
-                <textarea placeholder="Cookie 字符串（推荐）：auth_token=xxx; ct0=yyy" data-selectable="true"
-                  value={twitterForm.cookies ?? ''} onChange={e => setTwitterForm(p => ({...p, cookies: e.target.value}))}
-                  rows={2}
-                  className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors font-mono resize-none" />
-                <p className="text-xs text-muted-foreground -mt-1">或填写账号密码登录（需代理，可能被拦截）</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="password" placeholder="密码" data-selectable="true"
-                    value={twitterForm.password} onChange={e => setTwitterForm(p => ({...p, password: e.target.value}))}
-                    className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
-                  <input type="email" placeholder="注册邮箱" data-selectable="true"
-                    value={twitterForm.email} onChange={e => setTwitterForm(p => ({...p, email: e.target.value}))}
-                    className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
-                </div>
-                <button onClick={handleAddTwitterAccount} disabled={twitterAdding}
-                  className="self-start flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-500 text-white text-sm font-medium hover:bg-sky-600 disabled:opacity-40 transition-colors">
-                  {twitterAdding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  {twitterAdding ? '导入中...' : '添加账号'}
-                </button>
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>
