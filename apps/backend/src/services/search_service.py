@@ -175,8 +175,20 @@ async def _search_youtube_direct(query: str, page: int = 1) -> list:
                 if len(results) >= 12: break
             if len(results) >= 12: break
         return results
-    except Exception as e:
-        raise ConnectionError(f'YouTube 直连失败（建议配置 Serper API Key）: {e}')
+    except Exception:
+        # 直连失败时返回 YouTube 搜索跳转卡片，不抛错
+        yt_search_url = f'https://www.youtube.com/results?search_query={query.replace(" ", "+")}'
+        return [{
+            'id': 'youtube_search',
+            'title': f'在 YouTube 上搜索「{query}」（点击跳转）',
+            'url': yt_search_url,
+            'platform': 'youtube',
+            'duration': 0,
+            'thumbnail_url': '',
+            'author': 'YouTube',
+            'published_at': '',
+            'view_count': 0,
+        }]
 
 
 async def _search_twitter(query: str, page: int = 1) -> list:

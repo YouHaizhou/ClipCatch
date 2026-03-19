@@ -143,8 +143,7 @@ async function createWindow(): Promise<void> {
     await mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   } else {
     await mainWindow.loadURL('http://localhost:5173')
-    // 开发模式不自动开启 DevTools，如需调试请按 Ctrl+Shift+I 手动开启
-    // mainWindow.webContents.openDevTools()
+    mainWindow.webContents.openDevTools()  // 开发模式开启 DevTools 方便调试
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

@@ -19,7 +19,6 @@ const API_CONFIGS = [
   { provider: 'openai' as const, label: 'OpenAI API Key', placeholder: 'sk-...', hint: '\u652f\u6301 GPT-4o\uff0cplatform.openai.com \u83b7\u53d6', settingKey: 'api_key_openai' },
   { provider: 'groq' as const, label: 'Groq API Key', placeholder: 'gsk_...', hint: '\u514d\u8d39\u989d\u5ea6\u5927\uff0c\u901f\u5ea6\u6781\u5feb\uff0c\u652f\u6301 Whisper \u8f6c\u5199\uff0cconsole.groq.com \u83b7\u53d6', settingKey: 'api_key_groq' },
   { provider: 'gemini' as const, label: 'Google Gemini API Key', placeholder: 'AIza...', hint: 'Google AI Studio \u83b7\u53d6\uff0caistudio.google.com', settingKey: 'api_key_gemini' },
-  { provider: 'zhipu' as const, label: '\u667a\u8c31 AI API Key', placeholder: '\u667a\u8c31 GLM-4 \u5907\u7528 Key', hint: 'open.bigmodel.cn \u83b7\u53d6\uff0c\u53ef\u9009\u5907\u7528', settingKey: 'api_key_zhipu' },
 ]
 
 export default function SettingsPage() {
@@ -148,10 +147,10 @@ export default function SettingsPage() {
   }
 
   const TABS: [TabKey, string][] = [
-    ['api', 'API \u914d\u7f6e'],
-    ['storage', '\u5b58\u50a8\u7ba1\u7406'],
-    ['whisper', '\u672c\u5730\u6a21\u578b'],
-    ['twitter', 'Twitter \u8d26\u53f7'],
+    ['api', 'AI 对话模型'],
+    ['storage', '存储管理'],
+    ['whisper', '语音与视觉'],
+    ['twitter', 'Twitter 账号'],
   ]
   return (
     <div className="h-full flex flex-col">
