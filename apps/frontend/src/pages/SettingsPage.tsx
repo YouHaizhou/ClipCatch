@@ -37,8 +37,16 @@ export default function SettingsPage() {
   const [twitterAccounts, setTwitterAccounts] = useState<{ username: string; active: boolean }[]>([])
   const [twitterForm, setTwitterForm] = useState({ username: '' })
   const [twitterLoginLoading, setTwitterLoginLoading] = useState(false)
+  const [enabledKeys, setEnabledKeys] = useState<Record<string, boolean>>({})
 
-  useEffect(() => { loadStorageInfo(); loadWhisperStatus(); loadTwitterStatus() }, [])
+  useEffect(() => { loadStorageInfo(); loadWhisperStatus(); loadTwitterStatus(); loadEnabledKeys() }, [])
+
+  const loadEnabledKeys = async () => {
+    try {
+      const data = await apiGet<Record<string, boolean>>('/api/settings/enabled-keys')
+      setEnabledKeys(data)
+    } catch {}
+  }
 
   const loadTwitterStatus = async () => {
     try {
@@ -178,7 +186,19 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">API Key 加密存储在本地，不上传任何服务器。</p>
               {API_CONFIGS.map((cfg) => (
                 <div key={cfg.provider} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">{statusIcon(cfg.provider)}<label className="text-sm font-medium">{cfg.label}</label></div>
+                  <div className="flex items-center gap-2 justify-between">
+                    <div className="flex items-center gap-2">{statusIcon(cfg.provider)}<label className="text-sm font-medium">{cfg.label}</label></div>
+                    <button
+                      onClick={async () => {
+                        const next = !(enabledKeys[cfg.settingKey] !== false)
+                        setEnabledKeys(p => ({ ...p, [cfg.settingKey]: next }))
+                        await apiPost('/api/settings', { [`${cfg.settingKey}_enabled`]: next })
+                      }}
+                      className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${enabledKeys[cfg.settingKey] !== false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-muted text-muted-foreground'}`}
+                    >
+                      {enabledKeys[cfg.settingKey] !== false ? '已启用' : '已停用'}
+                    </button>
+                  </div>
                   <p className="text-xs text-muted-foreground">{cfg.hint}</p>
                   <div className="flex gap-2">
                     <input type="password" value={keyValues[cfg.settingKey] ?? ''}

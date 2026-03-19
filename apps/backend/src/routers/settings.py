@@ -45,6 +45,18 @@ def _calc_cache_size() -> str:
     return _format_size(total)
 
 
+@router.get('/settings/enabled-keys')
+def get_enabled_keys(db: Session = Depends(get_db)):
+    """获取所有 API Key 的启用状态"""
+    keys = ['api_key_deepseek', 'api_key_openai', 'api_key_groq', 'api_key_gemini', 'api_key_serper']
+    result = {}
+    for key in keys:
+        enabled = _get_setting(db, f'{key}_enabled')
+        # 默认为 True（未设置过则视为启用）
+        result[key] = enabled if enabled is not None else True
+    return {'code': 0, 'data': result}
+
+
 @router.get('/settings')
 def get_settings(db: Session = Depends(get_db)):
     """获取所有设置项"""

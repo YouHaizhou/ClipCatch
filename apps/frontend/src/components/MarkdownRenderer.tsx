@@ -47,10 +47,6 @@ export default function MarkdownRenderer({
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {content}
       </ReactMarkdown>
-      {/* 打字机光标 */}
-      {isStreaming && (
-        <span className="inline-block w-0.5 h-4 bg-primary animate-pulse ml-0.5 align-middle" />
-      )}
     </div>
   )
 }

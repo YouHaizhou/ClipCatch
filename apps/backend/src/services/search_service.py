@@ -1,9 +1,20 @@
 import asyncio
 import re
 import json
+import os
 from typing import Optional
 import httpx
 from sqlalchemy.orm import Session
+
+# 读取系统代理配置（支持 Clash Verge 等本地代理）
+_PROXY = os.environ.get('TWS_PROXY') or os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
+
+
+def _make_client(**kwargs) -> httpx.AsyncClient:
+    """创建带代理的 httpx 客户端"""
+    if _PROXY:
+        kwargs.setdefault('proxy', _PROXY)
+    return httpx.AsyncClient(**kwargs)
 
 _HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -55,13 +66,13 @@ async def _search_bilibili(query: str, page: int = 1, sort: str = 'relevance') -
               'page_size': 20, 'order': order_map.get(sort, 'totalrank'), 'platform': 'pc', 'highlight': 1}
     headers = {**_HEADERS, 'Referer': 'https://www.bilibili.com/', 'Origin': 'https://www.bilibili.com',
                'Accept': 'application/json, text/plain, */*'}
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
+    async with _make_client(timeout=15, follow_redirects=True, headers=headers) as client:
         try: await client.get('https://www.bilibili.com/', timeout=5)
         except Exception: pass
         resp = await client.get(url, params=params)
     if resp.status_code == 412:
         await asyncio.sleep(2)
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
+        async with _make_client(timeout=15, follow_redirects=True, headers=headers) as client:
             try: await client.get('https://www.bilibili.com/', timeout=5)
             except Exception: pass
             resp = await client.get(url, params=params)
@@ -109,7 +120,7 @@ async def _search_youtube_via_serper(query: str, page: int = 1):
     if not serper_key:
         return None
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with _make_client(timeout=15) as client:
             resp = await client.post(
                 'https://google.serper.dev/videos',
                 headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},
@@ -146,7 +157,7 @@ async def _search_youtube_direct(query: str, page: int = 1) -> list:
     search_url = f'https://www.youtube.com/results?search_query={query.replace(" ", "+")}'
     headers = {**_HEADERS, 'Accept-Language': 'en-US,en;q=0.9'}
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        async with _make_client(timeout=15, follow_redirects=True) as client:
             resp = await client.get(search_url, headers=headers)
         if resp.status_code != 200:
             raise ConnectionError(f'YouTube 返回 HTTP {resp.status_code}')
@@ -228,7 +239,7 @@ async def _search_twitter(query: str, page: int = 1) -> list:
     results = []
     try:
         # 策略1: /videos 接口，限定 twitter.com OR x.com 域名
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with _make_client(timeout=15) as client:
             resp1 = await client.post(
                 'https://google.serper.dev/videos',
                 headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},
@@ -253,7 +264,7 @@ async def _search_twitter(query: str, page: int = 1) -> list:
 
         # 策略2: /search 接口补充，放宽筛选（不再只要 twitter.com）
         if len(results) < 5:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with _make_client(timeout=15) as client:
                 resp2 = await client.post(
                     'https://google.serper.dev/search',
                     headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},

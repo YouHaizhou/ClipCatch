@@ -4,6 +4,11 @@
 import os
 # 修复 ctranslate2 + onnxruntime 同时加载导致的 OpenMP 冲突
 os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
+# 自动读取系统代理（支持 Clash Verge 混合代理端口 7897）
+if not os.environ.get('HTTP_PROXY') and not os.environ.get('TWS_PROXY'):
+    os.environ.setdefault('HTTP_PROXY', 'http://127.0.0.1:7897')
+    os.environ.setdefault('HTTPS_PROXY', 'http://127.0.0.1:7897')
+    os.environ.setdefault('TWS_PROXY', 'http://127.0.0.1:7897')
 
 import argparse
 import base64
