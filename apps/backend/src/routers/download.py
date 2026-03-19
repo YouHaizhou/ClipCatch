@@ -143,31 +143,42 @@ async def control_task(task_id: int, body: dict, db: Session = Depends(get_db)):
 @router.get('/download/tasks')
 def list_tasks(db: Session = Depends(get_db)):
     """获取所有下载任务列表"""
-    tasks = (
-        db.query(DownloadTask)
-        .order_by(DownloadTask.created_at.desc())
-        .limit(50)
-        .all()
-    )
-    return {
-        'code': 0,
-        'data': [
-            {
+    try:
+        tasks = (
+            db.query(DownloadTask)
+            .order_by(DownloadTask.created_at.desc())
+            .limit(50)
+            .all()
+        )
+        result = []
+        for t in tasks:
+            try:
+                video = t.video
+                title = video.title if video else ''
+                thumb = video.thumbnail_url if video else ''
+                duration = video.duration if video else 0
+            except Exception:
+                title = ''
+                thumb = ''
+                duration = 0
+            result.append({
                 'task_id': t.id,
                 'video_id': t.video_id,
-                'title': t.video.title if t.video else '',
-                'thumbnail_url': t.video.thumbnail_url if t.video else '',
-                'duration': t.video.duration if t.video else 0,
+                'title': title,
+                'thumbnail_url': thumb,
+                'duration': duration,
                 'status': t.status,
                 'progress_pct': t.progress_pct,
                 'speed_bps': t.speed_bps,
                 'eta_seconds': t.eta_seconds,
                 'error_msg': t.error_msg,
-                'created_at': t.created_at.isoformat(),
-            }
-            for t in tasks
-        ]
-    }
+                'created_at': t.created_at.isoformat() if t.created_at else '',
+            })
+        return {'code': 0, 'data': result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'code': 1, 'message': f'获取任务列表失败: {e}'}
 
 
 @router.get('/download/tasks/{task_id}/progress')

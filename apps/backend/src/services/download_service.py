@@ -166,6 +166,37 @@ async def start_download(
     if ffmpeg_dir:
         ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
+    # 代理配置：Twitter/X 需要代理才能下载
+    proxy = os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
+    if proxy and ('twitter.com' in url or 'x.com' in url or 't.co' in url):
+        ydl_opts['proxy'] = proxy
+
+    # Twitter cookies：从 twscrape 账号数据库读取
+    if 'twitter.com' in url or 'x.com' in url or 't.co' in url:
+        try:
+            from pathlib import Path as _Path
+            import json as _json
+            import sqlite3 as _sqlite3
+            db_path = str(_Path.home() / 'VideoAI' / 'twscrape_accounts.db')
+            conn = _sqlite3.connect(db_path)
+            row = conn.execute('SELECT cookies FROM accounts WHERE active=1 LIMIT 1').fetchone()
+            conn.close()
+            if row and row[0]:
+                cookies_data = _json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                if isinstance(cookies_data, dict) and cookies_data:
+                    # 写入临时 Netscape cookie 文件
+                    import tempfile
+                    cookie_lines = ['# Netscape HTTP Cookie File']
+                    for name, value in cookies_data.items():
+                        cookie_lines.append(f'.twitter.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}')
+                        cookie_lines.append(f'.x.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}')
+                    tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                    tmp.write('\n'.join(cookie_lines))
+                    tmp.close()
+                    ydl_opts['cookiefile'] = tmp.name
+        except Exception as _e:
+            print(f'[WARN] Twitter cookie load failed: {_e}')
+
     loop = asyncio.get_event_loop()
     try:
         def run_ytdlp():
