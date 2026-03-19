@@ -219,7 +219,19 @@ export default function SettingsPage() {
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">搜索增强</p>
                 {SEARCH_CONFIGS.map((cfg) => (
                   <div key={cfg.settingKey} className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">{cfg.label}</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">{cfg.label}</label>
+                      <button
+                        onClick={async () => {
+                          const next = !(enabledKeys[cfg.settingKey] !== false)
+                          setEnabledKeys(p => ({ ...p, [cfg.settingKey]: next }))
+                          await apiPost('/api/settings', { [`${cfg.settingKey}_enabled`]: next })
+                        }}
+                        className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${enabledKeys[cfg.settingKey] !== false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-muted text-muted-foreground'}`}
+                      >
+                        {enabledKeys[cfg.settingKey] !== false ? '已启用' : '已停用'}
+                      </button>
+                    </div>
                     <p className="text-xs text-muted-foreground">{cfg.hint}</p>
                     <div className="flex gap-2">
                       <input type="password" value={keyValues[cfg.settingKey] ?? ''}
@@ -281,7 +293,7 @@ export default function SettingsPage() {
               {whisperStatus && (
                 <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg text-sm border',
                   whisperStatus.available ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400')}>
-                  {whisperStatus.available ? <><CheckCircle size={14} />模型已就绪（{whisperStatus.model_size}）</> : <><XCircle size={14} />{whisperStatus.error || '模型未配置'}</>}
+                  {whisperStatus.available ? <><CheckCircle size={14} />模型已就绪</> : <><XCircle size={14} />{whisperStatus.error || '模型未配置'}</>}
                 </div>
               )}
               <div className="flex flex-col gap-2">
@@ -298,16 +310,36 @@ export default function SettingsPage() {
                   {whisperSaving ? '验证中...' : '保存模型路径'}
                 </button>
               </div>
-              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex flex-col gap-3">
+              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex flex-col gap-4">
                 <div className="flex items-center gap-2 font-medium text-sm"><Cpu size={15} className="text-primary" />多模态视觉分析 API</div>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <p>多模态模式需要配置 OpenAI 或 Google Gemini API Key。</p>
-                  <p>配置后可在 AI 工作台选择「多模态」模式。</p>
-                </div>
-                <button onClick={() => setActiveTab('api')}
-                  className="self-start px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90">
-                  前往 API 配置 →
-                </button>
+                <p className="text-xs text-muted-foreground">多模态模式独立配置\uff0c与对话模型 API 相互独立\u3002支持 OpenAI Vision 或 Google Gemini\u3002</p>
+                {([
+                  { label: 'OpenAI Vision API Key', placeholder: 'sk-...', settingKey: 'api_key_openai_vision', hint: '用于多模态视频分析\uff0c留空则复用 AI 对话中的 OpenAI Key' },
+                  { label: 'Gemini Vision API Key', placeholder: 'AIza...', settingKey: 'api_key_gemini_vision', hint: '用于多模态视频分析\uff0c留空则复用 AI 对话中的 Gemini Key' },
+                ]).map(vcfg =>
+                  <div key={vcfg.settingKey} className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">{vcfg.label}</label>
+                    <p className="text-xs text-muted-foreground">{vcfg.hint}</p>
+                    <div className="flex gap-2">
+                      <input type="password" value={keyValues[vcfg.settingKey] ?? ''}
+                        onChange={e => setKeyValues(p => ({ ...p, [vcfg.settingKey]: e.target.value }))}
+                        placeholder={vcfg.placeholder} data-selectable="true" autoComplete="off"
+                        className="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors font-mono" />
+                      <button onClick={async () => {
+                          setSavingKey(vcfg.settingKey)
+                          try {
+                            await apiPost('/api/settings', { [vcfg.settingKey]: keyValues[vcfg.settingKey]?.trim() })
+                            showToast('success', vcfg.label + '已保存')
+                          } catch(e) { showToast('error', String(e)) }
+                          finally { setSavingKey(null) }
+                        }}
+                        disabled={savingKey === vcfg.settingKey || !keyValues[vcfg.settingKey]?.trim()}
+                        className="px-3 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 whitespace-nowrap">
+                        {savingKey === vcfg.settingKey ? <Loader2 size={14} className="animate-spin" /> : '保存'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
