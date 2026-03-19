@@ -53,7 +53,7 @@ export default function SettingsPage() {
     try {
       const result = await window.electronAPI.twitterLogin()
       if (result.success && result.cookies && result.auth_token) {
-        const username = twitterForm.username || prompt('请输入你的 Twitter 用户名（不含@）') || ''
+        const username = twitterForm.username.trim()
         if (!username) { showToast('error', '请填写用户名'); return }
         const cookieStr = JSON.stringify(result.cookies)
         const res = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', {
