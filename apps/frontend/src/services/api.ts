@@ -80,6 +80,18 @@ export function proxyImageUrl(url: string): string {
   return `/api/proxy/image?url=${encoded}`
 }
 
+export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`)
+  const json: ApiResponse<T> = await res.json()
+  if (json.code !== 0) throw new Error(json.message ?? 'Unknown error')
+  return json.data as T
+}
+
 export function createSSE(path: string): EventSource {
   return new EventSource(`${baseUrl()}${path}`)
 }

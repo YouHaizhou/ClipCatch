@@ -215,24 +215,23 @@ async def _search_twitter(query: str, page: int = 1) -> list:
 
     results = []
     try:
-        # 策略1: /videos 接口，不加 site: 限制，加 twitter 关键词
+        # 策略1: /videos 接口，限定 twitter.com OR x.com 域名
         async with httpx.AsyncClient(timeout=15) as client:
             resp1 = await client.post(
                 'https://google.serper.dev/videos',
                 headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},
-                json={'q': f'{query} twitter', 'num': 10},
+                json={'q': f'{query} site:twitter.com OR site:x.com', 'num': 10},
             )
         if resp1.status_code == 200:
             for item in resp1.json().get('videos', []):
                 link = item.get('link', '')
                 if not link:
                     continue
-                is_twitter = any(d in link for d in ['twitter.com', 'x.com', 't.co'])
                 results.append({
                     'id': link.split('/')[-1] or link,
                     'title': item.get('title', ''),
                     'url': link,
-                    'platform': 'twitter' if is_twitter else 'other',
+                    'platform': 'twitter',
                     'duration': _parse_duration(item.get('duration', '')),
                     'thumbnail_url': item.get('imageUrl', ''),
                     'author': item.get('channel', ''),

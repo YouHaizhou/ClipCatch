@@ -4,7 +4,7 @@
 # GET  /api/twitter/account/status — 查询状态
 # DELETE /api/twitter/account      — 删除账号
 # ============================================================
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 router = APIRouter()
 
 
@@ -47,8 +47,12 @@ async def account_status():
 
 
 @router.delete('/twitter/account')
-async def remove_account(body: dict):
+async def remove_account(request: Request):
     """删除指定 Twitter 账号"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
     username = body.get('username', '').strip()
     if not username:
         return {'code': 1, 'message': 'username 不能为空'}
@@ -56,7 +60,7 @@ async def remove_account(body: dict):
         from services.twitter_service import remove_twitter_account
         result = await remove_twitter_account(username)
         if result['success']:
-            return {'code': 0, 'data': result}
+            return {'code': 0, 'data': {'success': True, 'message': result['message']}}
         else:
             return {'code': 1, 'message': result['message']}
     except Exception as e:
