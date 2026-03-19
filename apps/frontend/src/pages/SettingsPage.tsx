@@ -21,6 +21,10 @@ const API_CONFIGS = [
   { provider: 'gemini' as const, label: 'Google Gemini API Key', placeholder: 'AIza...', hint: 'Google AI Studio \u83b7\u53d6\uff0caistudio.google.com', settingKey: 'api_key_gemini' },
 ]
 
+const SEARCH_CONFIGS = [
+  { label: 'Serper API Key', placeholder: 'serper key...', hint: 'serper.dev 获取\uff0c免费 2500 次/月\u3002用于 YouTube / Twitter/X 视频搜索\uff0c国内直连无需代理\u3002', settingKey: 'api_key_serper' },
+]
+
 export default function SettingsPage() {
   const { apiStatus, testConnection, loadSettings } = useSettingsStore()
   const [activeTab, setActiveTab] = useState<TabKey>('api')
@@ -189,6 +193,36 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ))}
+
+              {/* Search API */}
+              <div className="pt-4 border-t border-border flex flex-col gap-4">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">搜索增强</p>
+                {SEARCH_CONFIGS.map((cfg) => (
+                  <div key={cfg.settingKey} className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">{cfg.label}</label>
+                    <p className="text-xs text-muted-foreground">{cfg.hint}</p>
+                    <div className="flex gap-2">
+                      <input type="password" value={keyValues[cfg.settingKey] ?? ''}
+                        onChange={e => setKeyValues(p => ({ ...p, [cfg.settingKey]: e.target.value }))}
+                        placeholder={cfg.placeholder} data-selectable="true" autoComplete="off"
+                        className="flex-1 px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors font-mono" />
+                      <button
+                        onClick={async () => {
+                          setSavingKey(cfg.settingKey)
+                          try {
+                            await apiPost('/api/settings', { [cfg.settingKey]: keyValues[cfg.settingKey]?.trim() })
+                            showToast('success', 'Serper API Key 已保存')
+                          } catch(e) { showToast('error', String(e)) }
+                          finally { setSavingKey(null) }
+                        }}
+                        disabled={savingKey === cfg.settingKey || !keyValues[cfg.settingKey]?.trim()}
+                        className="px-3 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 whitespace-nowrap">
+                        {savingKey === cfg.settingKey ? <Loader2 size={14} className="animate-spin" /> : '保存'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {activeTab === 'storage' && (
