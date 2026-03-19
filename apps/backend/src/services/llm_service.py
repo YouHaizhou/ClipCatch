@@ -3,11 +3,14 @@
 # 支持流式 token 输出，通过回调推送给 SSE 层
 # ============================================================
 import json
+import os
 from typing import AsyncGenerator, Callable, Optional
 import httpx
 from sqlalchemy.orm import Session
 from models import Setting
 from services.prompts import build_messages, PROMPTS
+
+_PROXY = os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
 
 DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions'
 
@@ -58,44 +61,49 @@ async def stream_summary(
 
     full_content = ''
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        async with client.stream(
-            'POST',
-            DEEPSEEK_API_URL,
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-            },
-            json={
-                'model': model,
-                'messages': messages,
-                'stream': True,
-                'temperature': 0.7,
-                'max_tokens': 4096,
-            },
-        ) as resp:
-            if resp.status_code == 401:
-                raise ValueError('DeepSeek API Key 无效（401）')
-            if resp.status_code == 429:
-                raise ValueError('DeepSeek API 配额已耗尽（429）')
-            if resp.status_code != 200:
-                raise ValueError(f'DeepSeek API 错误: HTTP {resp.status_code}')
+    try:
+        async with httpx.AsyncClient(timeout=120, proxy=_PROXY) as client:
+            async with client.stream(
+                'POST',
+                DEEPSEEK_API_URL,
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'model': model,
+                    'messages': messages,
+                    'stream': True,
+                    'temperature': 0.7,
+                    'max_tokens': 4096,
+                },
+            ) as resp:
+                if resp.status_code == 401:
+                    raise ValueError('DeepSeek API Key 无效（401）')
+                if resp.status_code == 429:
+                    raise ValueError('DeepSeek API 配额已耗尽（429）')
+                if resp.status_code != 200:
+                    raise ValueError(f'DeepSeek API 错误: HTTP {resp.status_code}')
 
-            async for line in resp.aiter_lines():
-                if not line or not line.startswith('data: '):
-                    continue
-                data_str = line[6:]  # 去掉 'data: ' 前缀
-                if data_str == '[DONE]':
-                    break
-                try:
-                    chunk = json.loads(data_str)
-                    delta = chunk['choices'][0]['delta']
-                    token = delta.get('content', '')
-                    if token:
-                        full_content += token
-                        on_token(token)
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    continue
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith('data: '):
+                        continue
+                    data_str = line[6:]  # 去掉 'data: ' 前缀
+                    if data_str == '[DONE]':
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk['choices'][0]['delta']
+                        token = delta.get('content', '')
+                        if token:
+                            full_content += token
+                            on_token(token)
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+    except httpx.ConnectError:
+        raise ConnectionError('DeepSeek API 连接失败，请检查网络或代理配置')
+    except httpx.TimeoutException:
+        raise ConnectionError('DeepSeek API 连接超时，请检查网络或代理配置')
 
     if not full_content.strip():
         raise RuntimeError('LLM 返回内容为空')

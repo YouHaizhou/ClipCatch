@@ -14,7 +14,7 @@ interface MarkdownRendererProps {
 
 export default function MarkdownRenderer({
   content,
-  isStreaming = false,
+  isStreaming: _isStreaming = false,
   className,
 }: MarkdownRendererProps) {
   return (

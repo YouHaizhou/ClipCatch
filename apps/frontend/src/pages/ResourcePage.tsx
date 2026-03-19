@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react'
 import {
   Download, Library, Pause, X, FolderOpen, CheckCircle, XCircle, Clock,
-  Loader2, Play, Cpu, LayoutGrid, List, Search, HardDrive, CheckCircle2, ArrowUpDown, ChevronDown
+  Loader2, Play, Cpu, LayoutGrid, List, Search, HardDrive, CheckCircle2, ArrowUpDown, ChevronDown, Trash2
 } from 'lucide-react'
 import { cn, formatSpeed, formatEta, formatDuration, formatBytes } from '@/lib/utils'
-import { apiGet, proxyImageUrl } from '@/services/api'
+import { apiGet, apiDelete, proxyImageUrl } from '@/services/api'
 import { useDownloadStore } from '@/store/downloadStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { showToast } from '@/components/Toast'
@@ -137,6 +137,30 @@ export default function ResourcePage() {
     await window.electronAPI.openPath(v.local_file_path.replace(/[\\/][^\\/]+$/, ''))
   }
 
+  const handleDeleteVideo = async (v: LibraryVideo, deleteFile: boolean) => {
+    const msg = deleteFile
+      ? `确定要删除「${v.title.slice(0,30)}」的记录和本地文件？此操作不可恢复。`
+      : `确定要删除「${v.title.slice(0,30)}」的库记录？（本地文件保留）`
+    if (!window.confirm(msg)) return
+    try {
+      const url = deleteFile
+        ? `/api/library/${v.video_id}?delete_file=true`
+        : `/api/library/${v.video_id}`
+      await apiDelete<{ success: boolean }>(url)
+      showToast('success', deleteFile ? '已删除记录和文件' : '已删除库记录')
+      await fetchLibrary()
+    } catch (e) { showToast('error', String(e)) }
+  }
+
+  const handleDeleteTask = async (videoId: number) => {
+    if (!window.confirm('确定要删除此下载记录？')) return
+    try {
+      await apiDelete<{ success: boolean }>(`/api/library/${videoId}`)
+      showToast('success', '已删除记录')
+      fetchTasks()
+    } catch (e) { showToast('error', String(e)) }
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* 播放弹窗 */}
@@ -214,6 +238,7 @@ export default function ResourcePage() {
                         {task.status === 'completed' && <>
                           <button onClick={() => handleOpenFolder(task.video_id)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="打开文件夹"><FolderOpen size={13} /></button>
                           <button onClick={() => handleSendToAI(task.video_id)} className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="发送至 AI 分析"><Cpu size={13} /></button>
+                        <button onClick={() => handleDeleteTask(task.video_id)} className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors" title="删除记录"><Trash2 size={13} /></button>
                         </>}
                       </div>
                     </div>
@@ -341,6 +366,7 @@ export default function ResourcePage() {
                       </div>
                       <button onClick={() => handleFolder(v)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="打开文件夹"><FolderOpen size={12} /></button>
                       <button onClick={() => handleAnalyze(v.video_id)} className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="AI 分析"><Cpu size={12} /></button>
+                      <button onClick={() => handleDeleteVideo(v, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors" title="删除记录"><Trash2 size={12} /></button>
                     </div>
                   </div>
                 )
@@ -369,6 +395,7 @@ export default function ResourcePage() {
                       <button onClick={() => setPlaying(v)} className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-muted text-xs hover:bg-secondary"><Play size={11} fill="currentColor" /> 播放</button>
                       <button onClick={() => handleFolder(v)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"><FolderOpen size={13} /></button>
                       <button onClick={() => handleAnalyze(v.video_id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs"><Cpu size={12} /> 分析</button>
+                      <button onClick={() => handleDeleteVideo(v, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors" title="删除记录"><Trash2 size={13} /></button>
                     </div>
                   </div>
                 )

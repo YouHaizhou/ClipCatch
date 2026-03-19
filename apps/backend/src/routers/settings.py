@@ -2,6 +2,7 @@
 # 设置路由 — 完整实现
 # ============================================================
 import json
+import os
 import shutil
 import time
 import httpx
@@ -12,6 +13,8 @@ from database import get_db
 from models import Setting
 
 router = APIRouter()
+
+_PROXY = os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
 
 DEFAULT_SETTINGS = {
     'download_dir': str(Path.home() / 'VideoAI' / 'downloads'),
@@ -52,7 +55,6 @@ def get_enabled_keys(db: Session = Depends(get_db)):
     result = {}
     for key in keys:
         enabled = _get_setting(db, f'{key}_enabled')
-        # 默认为 True（未设置过则视为启用）
         result[key] = enabled if enabled is not None else True
     return {'code': 0, 'data': result}
 
@@ -72,6 +74,8 @@ def get_settings(db: Session = Depends(get_db)):
             val = _get_setting(db, key_name)
             short = key_name.replace('api_key_', '')
             result[f'has_{short}_key'] = bool(val)
+            enabled = _get_setting(db, f'{key_name}_enabled')
+            result[f'{short}_enabled'] = enabled if enabled is not None else True
         return {'code': 0, 'data': result}
     except Exception:
         import traceback
@@ -99,7 +103,7 @@ def update_settings(body: dict, db: Session = Depends(get_db)):
 
 @router.post('/settings/test-connection')
 async def test_connection(body: dict, db: Session = Depends(get_db)):
-    """测试指定 API 的连通性"""
+    """测试指定 API 的连通性（走系统代理）"""
     provider = body.get('provider', '')
     start = time.time()
 
@@ -108,7 +112,7 @@ async def test_connection(body: dict, db: Session = Depends(get_db)):
             key = _get_setting(db, 'api_key_deepseek')
             if not key:
                 return {'code': 0, 'data': {'status': 'error', 'message': 'API Key 未配置'}}
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=_PROXY) as client:
                 resp = await client.post(
                     'https://api.deepseek.com/chat/completions',
                     headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
@@ -128,7 +132,7 @@ async def test_connection(body: dict, db: Session = Depends(get_db)):
             key = _get_setting(db, 'api_key_zhipu')
             if not key:
                 return {'code': 0, 'data': {'status': 'error', 'message': 'API Key 未配置'}}
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=_PROXY) as client:
                 resp = await client.get(
                     'https://open.bigmodel.cn/api/paas/v4/models',
                     headers={'Authorization': f'Bearer {key}'},
@@ -151,7 +155,7 @@ async def test_connection(body: dict, db: Session = Depends(get_db)):
             key = _get_setting(db, 'api_key_serper')
             if not key:
                 return {'code': 0, 'data': {'status': 'error', 'message': 'API Key 未配置'}}
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=_PROXY) as client:
                 resp = await client.post(
                     'https://google.serper.dev/search',
                     headers={'X-API-KEY': key, 'Content-Type': 'application/json'},
@@ -169,7 +173,7 @@ async def test_connection(body: dict, db: Session = Depends(get_db)):
             key = _get_setting(db, 'api_key_openai')
             if not key:
                 return {'code': 0, 'data': {'status': 'error', 'message': 'API Key 未配置'}}
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=_PROXY) as client:
                 resp = await client.get(
                     'https://api.openai.com/v1/models',
                     headers={'Authorization': f'Bearer {key}'},
@@ -186,7 +190,7 @@ async def test_connection(body: dict, db: Session = Depends(get_db)):
             key = _get_setting(db, 'api_key_groq')
             if not key:
                 return {'code': 0, 'data': {'status': 'error', 'message': 'API Key 未配置'}}
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=_PROXY) as client:
                 resp = await client.get(
                     'https://api.groq.com/openai/v1/models',
                     headers={'Authorization': f'Bearer {key}'},
@@ -199,7 +203,7 @@ async def test_connection(body: dict, db: Session = Depends(get_db)):
             key = _get_setting(db, 'api_key_gemini')
             if not key:
                 return {'code': 0, 'data': {'status': 'error', 'message': 'API Key 未配置'}}
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=10, proxy=_PROXY) as client:
                 resp = await client.get(
                     f'https://generativelanguage.googleapis.com/v1beta/models?key={key}',
                 )
@@ -215,9 +219,9 @@ async def test_connection(body: dict, db: Session = Depends(get_db)):
             return {'code': 1, 'message': f'未知 provider: {provider}'}
 
     except httpx.ConnectError:
-        return {'code': 0, 'data': {'status': 'error', 'message': '网络不可达，请检查网络连接'}}
+        return {'code': 0, 'data': {'status': 'error', 'message': '网络不可达，Key 已保存，连接测试失败（请检查代理或网络）'}}
     except httpx.TimeoutException:
-        return {'code': 0, 'data': {'status': 'error', 'message': '连接超时（>10s）'}}
+        return {'code': 0, 'data': {'status': 'error', 'message': '连接超时（>10s），Key 已保存，请检查代理或网络'}}
     except Exception as e:
         return {'code': 0, 'data': {'status': 'error', 'message': str(e)}}
 

@@ -115,9 +115,11 @@ async def _search_youtube_via_serper(query: str, page: int = 1):
     try:
         row = db.query(Setting).filter(Setting.key == 'api_key_serper').first()
         serper_key = _json.loads(row.value) if row and row.value else None
+        row_enabled = db.query(Setting).filter(Setting.key == 'api_key_serper_enabled').first()
+        serper_enabled = _json.loads(row_enabled.value) if row_enabled and row_enabled.value is not None else True
     finally:
         db.close()
-    if not serper_key:
+    if not serper_key or not serper_enabled:
         return None
     try:
         async with _make_client(timeout=15) as client:
@@ -211,10 +213,12 @@ async def _search_twitter(query: str, page: int = 1) -> list:
     try:
         row = db.query(Setting).filter(Setting.key == 'api_key_serper').first()
         serper_key = _json.loads(row.value) if row and row.value else None
+        row_enabled = db.query(Setting).filter(Setting.key == 'api_key_serper_enabled').first()
+        serper_enabled = _json.loads(row_enabled.value) if row_enabled and row_enabled.value is not None else True
     finally:
         db.close()
-    if not serper_key:
-        # 未配置 Serper Key，尝试 twscrape（需用户配置 Twitter 账号）
+    if not serper_key or not serper_enabled:
+        # 未配置或已停用 Serper Key，尝试 twscrape（需用户配置 Twitter 账号）
         try:
             from services.twitter_service import search_twitter_videos
             tw_results = await search_twitter_videos(query, limit=12)

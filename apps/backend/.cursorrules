@@ -157,6 +157,14 @@ return {'code': 1, 'message': '具体错误'}
 - Write 后用 `wc -l` 验证行数是否与预期一致（而非 grep，避免超时）
 - **Write 写完后立即 cp 同步到 WSL**，顺序：Write → cp → wc -l验证
 - 中文路径下 Write 正常工作，无需特殊处理
+- **Write 有 13000 字符上限**：超出时报 `PAYLOAD_TOO_LARGE`，改用 StrReplace 或 Python 脚本补丁
+
+### CRLF 文件 StrReplace 失败时的终极方案：Python 补丁脚本
+- Windows 下 StrReplace 失败（CRLF 换行符导致），WSL 命令超时，PowerShell 字符串嵌套报错时，改用 Python 脚本
+- **正确做法**：Write 一个 `.py` 文件到 `C:\Users\34306\AppData\Local\Temp\patch_xxx.py`，用 `content.replace('\r\n','\n')` 统一换行符后做字符串替换，再写回
+- 执行：`python "C:\Users\34306\AppData\Local\Temp\patch_xxx.py"`
+- 输出 `PATCHED` 表示成功，`NOT_FOUND` 表示字符串未匹配（再检查实际内容）
+- 这是处理 CRLF+大文件+复杂内容的**最终兜底方案**，优先于 WSL python3 内联脚本和 PowerShell
 
 ### 并行读取
 - 任务开始时，把所有相关文件（routers、services、models）**一次性并行 Read**，减少来回等待
