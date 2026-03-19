@@ -62,7 +62,7 @@ export default function SettingsPage() {
           password: '',
           email: '',
           email_password: '',
-          cookies: cookieStr,
+          cookies: JSON.stringify(result.cookies),
         })
         if (res.success) {
           showToast('success', res.message)
