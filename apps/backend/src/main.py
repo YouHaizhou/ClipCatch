@@ -4,11 +4,9 @@
 import os
 # 修复 ctranslate2 + onnxruntime 同时加载导致的 OpenMP 冲突
 os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
-# 自动读取系统代理（支持 Clash Verge 混合代理端口 7897）
-if not os.environ.get('HTTP_PROXY') and not os.environ.get('TWS_PROXY'):
-    os.environ.setdefault('HTTP_PROXY', 'http://127.0.0.1:7897')
-    os.environ.setdefault('HTTPS_PROXY', 'http://127.0.0.1:7897')
-    os.environ.setdefault('TWS_PROXY', 'http://127.0.0.1:7897')
+# 代理配置：不自动注入代理环境变量，避免国内平台请求被误导向代理
+# 用户若需要代理，请在启动前自行设置 HTTP_PROXY 或 VIDEOAI_PROXY 环境变量
+# 例：set VIDEOAI_PROXY=http://127.0.0.1:7897
 
 import argparse
 import base64
@@ -85,7 +83,17 @@ async def proxy_image(url: str):
             'Accept-Language': 'zh-CN,zh;q=0.9',
         }
 
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        # YouTube/Twitter 封面需走代理；无代理时直接返回 fallback 避免绿幕
+        _proxy = os.environ.get('VIDEOAI_PROXY') or os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
+        needs_proxy = 'ytimg.com' in url or 'youtube.com' in url or 'twimg.com' in url
+        if needs_proxy and not _proxy:
+            # 无代理无法获取 YouTube/Twitter 图片，返回 204 让前端 onError 触发 fallback UI
+            from fastapi.responses import Response as FR
+            return FR(status_code=204)
+        client_kwargs: dict = {'timeout': 15, 'follow_redirects': True, 'trust_env': False}
+        if needs_proxy and _proxy:
+            client_kwargs['proxy'] = _proxy
+        async with httpx.AsyncClient(**client_kwargs) as client:
             if 'hdslb.com' in url or 'bilibili.com' in url:
                 try:
                     await client.get('https://www.bilibili.com/', timeout=4,

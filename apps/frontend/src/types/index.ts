@@ -93,11 +93,21 @@ export interface AppSettings {
   exportDir: string
   llmModel: string
   sttProvider: 'xunfei' | 'aliyun'
-  // API Keys（脱敏显示，实际值从后端读取）
+  cacheSize: string
+  // API Keys 存在标志（脱敏，实际值不返回前端）
   hasDeepseekKey: boolean
   hasZhipuKey: boolean
   hasXunfeiKey: boolean
   hasSerperKey: boolean
+  hasOpenaiKey: boolean
+  hasGroqKey: boolean
+  hasGeminiKey: boolean
+  // 各 Key 启用状态
+  deepseekEnabled: boolean
+  openaiEnabled: boolean
+  groqEnabled: boolean
+  geminiEnabled: boolean
+  serperEnabled: boolean
 }
 
 // ---------- API 响应通用结构 ----------

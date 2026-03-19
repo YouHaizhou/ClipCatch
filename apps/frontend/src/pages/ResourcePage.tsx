@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import {
   Download, Library, Pause, X, FolderOpen, CheckCircle, XCircle, Clock,
-  Loader2, Play, Cpu, LayoutGrid, List, Search, HardDrive, CheckCircle2, ArrowUpDown, ChevronDown, Trash2
+  Loader2, Play, Cpu, LayoutGrid, List, Search, HardDrive, CheckCircle2, ArrowUpDown, ChevronDown, Trash2, AlertTriangle
 } from 'lucide-react'
 import { cn, formatSpeed, formatEta, formatDuration, formatBytes } from '@/lib/utils'
 import { apiGet, apiDelete, proxyImageUrl } from '@/services/api'
@@ -19,6 +19,39 @@ interface LibraryVideo {
   video_id: number; title: string; thumbnail_path: string; thumbnail_url: string
   duration: number; file_size: number; downloaded_at: string; platform: string
   has_note: boolean; local_file_path: string
+}
+
+
+interface ConfirmDialog {
+  title: string; message: string; confirmLabel: string
+  danger?: boolean; onConfirm: () => void
+}
+
+function ConfirmModal({ dialog, onClose }: { dialog: ConfirmDialog; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl shadow-2xl p-5 w-80 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <div className={cn('w-8 h-8 rounded-full flex items-center justify-center shrink-0',
+            dialog.danger ? 'bg-red-500/15' : 'bg-primary/15')}>
+            <AlertTriangle size={16} className={dialog.danger ? 'text-red-400' : 'text-primary'} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-semibold">{dialog.title}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{dialog.message}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted">取消</button>
+          <button onClick={() => { dialog.onConfirm(); onClose() }}
+            className={cn('px-4 py-2 rounded-lg text-sm font-medium',
+              dialog.danger ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-primary text-primary-foreground hover:opacity-90')}>
+            {dialog.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const STATUS_CFG: Record<string, { label: string; color: string }> = {
@@ -42,6 +75,8 @@ const DOT: Record<string, string> = { youtube: 'bg-red-500', bilibili: 'bg-blue-
 
 export default function ResourcePage() {
   const { controlTask } = useDownloadStore()
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null)
+  const confirm = (d: ConfirmDialog) => setConfirmDialog(d)
   const { activePage, setActivePage } = useSettingsStore()
   const [activeTab, setActiveTab] = useState<'downloads' | 'library'>('downloads')
 
@@ -137,32 +172,39 @@ export default function ResourcePage() {
     await window.electronAPI.openPath(v.local_file_path.replace(/[\\/][^\\/]+$/, ''))
   }
 
-  const handleDeleteVideo = async (v: LibraryVideo, deleteFile: boolean) => {
-    const msg = deleteFile
-      ? `确定要删除「${v.title.slice(0,30)}」的记录和本地文件？此操作不可恢复。`
-      : `确定要删除「${v.title.slice(0,30)}」的库记录？（本地文件保留）`
-    if (!window.confirm(msg)) return
-    try {
-      const url = deleteFile
-        ? `/api/library/${v.video_id}?delete_file=true`
-        : `/api/library/${v.video_id}`
-      await apiDelete<{ success: boolean }>(url)
-      showToast('success', deleteFile ? '已删除记录和文件' : '已删除库记录')
-      await fetchLibrary()
-    } catch (e) { showToast('error', String(e)) }
-  }
+  const handleDeleteVideo = (v: LibraryVideo, deleteFile: boolean) => confirm({
+    title: deleteFile ? '删除记录和文件' : '删除库记录',
+    message: deleteFile
+      ? `将同时删除「${v.title.slice(0,25)}」的库记录和本地文件，此操作不可恢复。`
+      : `将删除「${v.title.slice(0,25)}」的库记录，本地文件保留。`,
+    confirmLabel: '确认删除', danger: true,
+    onConfirm: async () => {
+      try {
+        const url = deleteFile ? `/api/library/${v.video_id}?delete_file=true` : `/api/library/${v.video_id}`
+        await apiDelete<{ success: boolean }>(url)
+        showToast('success', deleteFile ? '已删除记录和文件' : '已删除库记录')
+        fetchLibrary()
+      } catch (e) { showToast('error', String(e)) }
+    }
+  })
 
-  const handleDeleteTask = async (videoId: number) => {
-    if (!window.confirm('确定要删除此下载记录？')) return
-    try {
-      await apiDelete<{ success: boolean }>(`/api/library/${videoId}`)
-      showToast('success', '已删除记录')
-      fetchTasks()
-    } catch (e) { showToast('error', String(e)) }
-  }
+  const handleDeleteTask = (task: TaskRow) => confirm({
+    title: '删除记录',
+    message: `确定要删除「${task.title.slice(0,28)}」的下载记录？`,
+    confirmLabel: '删除', danger: true,
+    onConfirm: async () => {
+      try {
+        await apiDelete<{ success: boolean }>(`/api/library/${task.video_id}`)
+        showToast('success', '已删除记录')
+        fetchTasks()
+      } catch (e) { showToast('error', String(e)) }
+    }
+  })
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {confirmDialog && <ConfirmModal dialog={confirmDialog} onClose={() => setConfirmDialog(null)} />}
+
       {/* 播放弹窗 */}
       {playing && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={() => setPlaying(null)}>
@@ -235,10 +277,10 @@ export default function ResourcePage() {
                         {isActive && <button onClick={() => handleControl(task.task_id,'pause')} className="p-1.5 rounded-md text-muted-foreground hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors" title="暂停"><Pause size={13} /></button>}
                         {isPaused && <button onClick={() => handleControl(task.task_id,'resume')} className="p-1.5 rounded-md text-muted-foreground hover:text-emerald-400 hover:bg-emerald-400/10 transition-colors" title="继续"><Play size={13} /></button>}
                         {!isDone && <button onClick={() => handleControl(task.task_id,'cancel')} className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors" title="取消"><X size={13} /></button>}
-                        {task.status === 'completed' && <>
+                        {(task.status === 'completed' || task.status === 'failed') && <>
                           <button onClick={() => handleOpenFolder(task.video_id)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="打开文件夹"><FolderOpen size={13} /></button>
                           <button onClick={() => handleSendToAI(task.video_id)} className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="发送至 AI 分析"><Cpu size={13} /></button>
-                        <button onClick={() => handleDeleteTask(task.video_id)} className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors" title="删除记录"><Trash2 size={13} /></button>
+                        <button onClick={() => handleDeleteTask(task)} className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors" title="删除记录"><Trash2 size={13} /></button>
                         </>}
                       </div>
                     </div>
@@ -342,7 +384,7 @@ export default function ResourcePage() {
             </div>
           )}
           {!libLoading && viewMode === 'grid' && filtered.length > 0 && (
-            <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {filtered.map(v => {
                 const thumb = proxyImageUrl(v.thumbnail_url || v.thumbnail_path)
                 return (

@@ -14,7 +14,7 @@
 - 🤖 **AI 知识提炼**：本地 Whisper 语音转写 + DeepSeek/OpenAI/Groq LLM 生成结构化笔记
 - 📚 **本地媒体库**：已下载视频管理，AI 状态角标，一键触发分析
 - 📝 **笔记导出**：复制全文 / 导出 .md 文件
-- 🐦 **Twitter/X 账号搜索**：可选配置 Twitter 账号，直接搜索平台视频推文
+- 🐦 **Twitter/X 视频搜索**：需配置 Serper API Key（国内直连，无需代理）
 
 ## 技术栈
 
@@ -25,7 +25,7 @@
 | 后端 | FastAPI + SQLAlchemy + SQLite |
 | AI | faster-whisper（本地 STT）+ DeepSeek/OpenAI/Groq API（LLM）|
 | 下载 | yt-dlp |
-| Twitter 搜索 | twscrape（可选）|
+| Twitter 搜索 | Serper API（google.serper.dev） |
 
 ## 快速开始
 
@@ -90,8 +90,7 @@ pnpm dev
 |--------|------|----------|
 | DeepSeek API Key | AI 笔记生成 | 推荐 |
 | Whisper 模型路径 | 本地语音转写 | 可选 |
-| Serper API Key | YouTube/Twitter 搜索增强 | 可选 |
-| Twitter 账号 | Twitter/X 视频直搜 | 可选 |
+| Serper API Key | YouTube/Twitter/X 搜索（无代理直连，国内可用） | **Twitter 搜索必填** |
 
 #### Whisper 模型下载
 
@@ -146,7 +145,7 @@ A: 需要科学上网，或在设置中配置 Serper API Key（serper.dev，有�
 A: 确保开启代理。yt-dlp 版本需 ≥ 2024.11.4，可执行 `pip install --upgrade yt-dlp` 升级。
 
 **Q: Twitter 搜索无结果？**
-A: 在「系统设置 → Twitter 账号」中配置 Twitter 小号凭证，或配置 Serper API Key。
+A: Twitter/X 平台已于 2024 年关闭所有公开 Guest Token 接口，无法在无授权状态下直接调用 API。**必须配置 Serper API Key**（[serper.dev](https://serper.dev)，有免费额度，国内直连无需代理）才能搜索 Twitter/X 视频。
 
 **Q: AI 生成显示「0字」？**
 A: 确保 DeepSeek/OpenAI/Groq API Key 已配置，且网络可访问对应服务。
@@ -155,7 +154,6 @@ A: 确保 DeepSeek/OpenAI/Groq API Key 已配置，且网络可访问对应服�
 
 - 本软件仅供个人学习和合法使用
 - 用户下载视频须确保拥有合法权限或视频为可免费下载内容
-- Twitter/X 账号搜索功能可能违反平台服务条款，由用户自行承担相关风险
 - 本软件不对因用户违规使用导致的版权纠纷承担责任
 - API Key 由用户自行填写，调用费用由用户承担
 

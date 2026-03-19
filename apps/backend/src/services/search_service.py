@@ -6,15 +6,73 @@ from typing import Optional
 import httpx
 from sqlalchemy.orm import Session
 
-# 读取系统代理配置（支持 Clash Verge 等本地代理）
-_PROXY = os.environ.get('TWS_PROXY') or os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
+# 代理配置：懒加载，每次调用时读取，确保 main.py 之后设置的环境变量能被感知
+def _get_proxy() -> str | None:
+    # 1. explicit env vars
+    proxy = (os.environ.get('VIDEOAI_PROXY') or os.environ.get('TWS_PROXY')
+             or os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
+             or os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy'))
+    if proxy:
+        return proxy
+    # 2. Windows registry proxy (Clash / V2ray system proxy)
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                r'Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings') as key:
+            enabled, _ = winreg.QueryValueEx(key, 'ProxyEnable')
+            if enabled:
+                server, _ = winreg.QueryValueEx(key, 'ProxyServer')
+                if server:
+                    s = str(server)
+                    if '://' not in s:
+                        s = 'http://' + s
+                    return s
+    except Exception:
+        pass
+    return None
 
-
-def _make_client(**kwargs) -> httpx.AsyncClient:
-    """创建带代理的 httpx 客户端"""
-    if _PROXY:
-        kwargs.setdefault('proxy', _PROXY)
+def _make_client(use_proxy: bool = False, **kwargs) -> httpx.AsyncClient:
+    """Create httpx client. use_proxy=True for YouTube/Twitter/Serper."""
+    if use_proxy:
+        proxy = _get_proxy()
+        if proxy:
+            kwargs['trust_env'] = False
+            kwargs.setdefault('proxy', proxy)
+        else:
+            # No explicit proxy found; let httpx read env/system proxy
+            kwargs['trust_env'] = True
+    else:
+        kwargs['trust_env'] = False
     return httpx.AsyncClient(**kwargs)
+
+
+
+def _parse_duration(s: str) -> int:
+    """Parse duration string like '1:23:45' or '12:34' or '1h23m' into seconds."""
+    if not s:
+        return 0
+    s = str(s).strip()
+    import re
+    # Format: HH:MM:SS or MM:SS
+    m = re.match(r'^(\d+):(\d+)(?::(\d+))?$', s)
+    if m:
+        parts = [int(x) for x in m.groups() if x is not None]
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        return parts[0] * 60 + parts[1]
+    # Format: 1h23m45s
+    m2 = re.match(r'(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?', s)
+    if m2:
+        h = int(m2.group(1) or 0)
+        m_ = int(m2.group(2) or 0)
+        sec = int(m2.group(3) or 0)
+        return h * 3600 + m_ * 60 + sec
+    # Plain seconds
+    try:
+        return int(s)
+    except Exception:
+        return 0
+
 
 _HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -23,64 +81,107 @@ _HEADERS = {
 }
 
 
-async def search_videos(db: Session, query: str, platform: str = 'bilibili',
-                        duration_filter: Optional[str] = None, sort: str = 'relevance', page: int = 1,
-                        seed: Optional[int] = None) -> dict:
+def _get_serper_config(db: Session) -> tuple[Optional[str], bool]:
+    """
+    从已有的 db Session 读取 Serper API Key 和启用状态。
+    返回 (key, enabled)，key=None 表示未配置。
+    """
+    from models import Setting
+    row = db.query(Setting).filter(Setting.key == 'api_key_serper').first()
+    serper_key: Optional[str] = json.loads(row.value) if row and row.value else None
+    row_en = db.query(Setting).filter(Setting.key == 'api_key_serper_enabled').first()
+    enabled: bool = json.loads(row_en.value) if row_en and row_en.value is not None else True
+    return serper_key, enabled
+
+
+async def search_videos(
+    db: Session,
+    query: str,
+    platform: str = 'all',
+    duration_filter: Optional[str] = None,
+    sort: str = 'relevance',
+    page: int = 1,
+    seed: Optional[int] = None,
+) -> dict:
     results = []
+
     if platform in ('bilibili', 'all'):
         try:
             results.extend(await _search_bilibili(query, page, sort))
         except Exception as e:
             if platform == 'bilibili':
                 raise ValueError(f'B 站搜索失败: {e}')
+
     if platform in ('youtube', 'all'):
         try:
-            results.extend(await _search_youtube(query, page))
+            results.extend(await _search_youtube(db, query, page))
         except Exception as e:
             if platform == 'youtube':
                 raise ValueError(f'YouTube 搜索失败: {e}')
+
     if platform in ('twitter', 'all'):
         try:
-            results.extend(await _search_twitter(query, page))
+            results.extend(await _search_twitter(db, query, page))
         except Exception as e:
             if platform == 'twitter':
                 raise ValueError(f'Twitter 搜索失败: {e}')
+
     if duration_filter:
         filtered = []
         for v in results:
             d = v.get('duration', 0)
-            if duration_filter == 'short' and d < 240: filtered.append(v)
-            elif duration_filter == 'medium' and 240 <= d <= 1200: filtered.append(v)
-            elif duration_filter == 'long' and d > 1200: filtered.append(v)
+            if duration_filter == 'short' and d < 240:
+                filtered.append(v)
+            elif duration_filter == 'medium' and 240 <= d <= 1200:
+                filtered.append(v)
+            elif duration_filter == 'long' and d > 1200:
+                filtered.append(v)
         results = filtered
+
     if seed is not None:
         import random
         random.Random(seed).shuffle(results)
+
     return {'results': results, 'total': len(results), 'page': page}
 
-
 async def _search_bilibili(query: str, page: int = 1, sort: str = 'relevance') -> list:
+    """B站搜索 — 国内平台，直连不走代理"""
     order_map = {'newest': 'pubdate', 'views': 'click', 'relevance': 'totalrank'}
     url = 'https://api.bilibili.com/x/web-interface/search/type'
-    params = {'search_type': 'video', 'keyword': query, 'page': page,
-              'page_size': 20, 'order': order_map.get(sort, 'totalrank'), 'platform': 'pc', 'highlight': 1}
-    headers = {**_HEADERS, 'Referer': 'https://www.bilibili.com/', 'Origin': 'https://www.bilibili.com',
-               'Accept': 'application/json, text/plain, */*'}
-    async with _make_client(timeout=15, follow_redirects=True, headers=headers) as client:
-        try: await client.get('https://www.bilibili.com/', timeout=5)
-        except Exception: pass
+    params = {
+        'search_type': 'video', 'keyword': query, 'page': page,
+        'page_size': 50, 'order': order_map.get(sort, 'totalrank'),
+        'platform': 'pc', 'highlight': 1,
+    }
+    headers = {
+        **_HEADERS,
+        'Referer': 'https://www.bilibili.com/',
+        'Origin': 'https://www.bilibili.com',
+        'Accept': 'application/json, text/plain, */*',
+    }
+    # Bilibili 直连（use_proxy=False），避免代理导致IP异常被412
+    async with _make_client(use_proxy=False, timeout=15, follow_redirects=True, headers=headers) as client:
+        try:
+            await client.get('https://www.bilibili.com/', timeout=5)
+        except Exception:
+            pass
         resp = await client.get(url, params=params)
+
     if resp.status_code == 412:
         await asyncio.sleep(2)
-        async with _make_client(timeout=15, follow_redirects=True, headers=headers) as client:
-            try: await client.get('https://www.bilibili.com/', timeout=5)
-            except Exception: pass
+        async with _make_client(use_proxy=False, timeout=15, follow_redirects=True, headers=headers) as client:
+            try:
+                await client.get('https://www.bilibili.com/', timeout=5)
+            except Exception:
+                pass
             resp = await client.get(url, params=params)
+
     if resp.status_code != 200:
         raise ConnectionError(f'B 站 API 返回 HTTP {resp.status_code}')
     data = resp.json()
     if data.get('code') != 0:
         raise ConnectionError(f'B 站 API 错误: {data.get("message", "unknown")}')
+
     items = data.get('data', {}).get('result', []) or []
     results = []
     for item in items:
@@ -89,44 +190,40 @@ async def _search_bilibili(query: str, page: int = 1, sort: str = 'relevance') -
         bvid = item.get('bvid', '')
         aid = item.get('aid', '')
         pic = item.get('pic', '')
-        if pic and not pic.startswith('http'): pic = 'https:' + pic
-        results.append({'id': bvid or str(aid), 'title': title,
+        if pic and not pic.startswith('http'):
+            pic = 'https:' + pic
+        results.append({
+            'id': bvid or str(aid),
+            'title': title,
             'url': f'https://www.bilibili.com/video/{bvid}' if bvid else f'https://www.bilibili.com/video/av{aid}',
-            'platform': 'bilibili', 'duration': _parse_duration(item.get('duration', '0:0')),
-            'thumbnail_url': pic, 'author': item.get('author', ''),
-            'published_at': str(item.get('pubdate', '')), 'view_count': item.get('play', 0)})
+            'platform': 'bilibili',
+            'duration': _parse_duration(item.get('duration', '0:0')),
+            'thumbnail_url': pic,
+            'author': item.get('author', ''),
+            'published_at': str(item.get('pubdate', '')),
+            'view_count': item.get('play', 0),
+        })
     return results
 
-
-async def _search_youtube(query: str, page: int = 1) -> list:
-    """YouTube 搜索：优先 Serper API（国内可用），无 Key 时降级直连"""
-    serper_results = await _search_youtube_via_serper(query, page)
-    if serper_results is not None:
-        return serper_results
+async def _search_youtube(db: Session, query: str, page: int = 1) -> list:
+    """YouTube 搜索：优先 Serper API（国内可用），无 Key 时降级走代理直连"""
+    serper_key, serper_enabled = _get_serper_config(db)
+    if serper_key and serper_enabled:
+        serper_results = await _search_youtube_via_serper(serper_key, query, page)
+        if serper_results:
+            return serper_results
     return await _search_youtube_direct(query, page)
 
 
-async def _search_youtube_via_serper(query: str, page: int = 1):
-    """通过 Serper API 搜索 YouTube 视频，返回 None 表示未配置 Key"""
-    from database import SessionLocal
-    from models import Setting
-    import json as _json
-    db = SessionLocal()
+async def _search_youtube_via_serper(serper_key: str, query: str, page: int = 1) -> Optional[list]:
+    """通过 Serper API 搜索 YouTube（国内直连 serper.dev，无需代理）"""
     try:
-        row = db.query(Setting).filter(Setting.key == 'api_key_serper').first()
-        serper_key = _json.loads(row.value) if row and row.value else None
-        row_enabled = db.query(Setting).filter(Setting.key == 'api_key_serper_enabled').first()
-        serper_enabled = _json.loads(row_enabled.value) if row_enabled and row_enabled.value is not None else True
-    finally:
-        db.close()
-    if not serper_key or not serper_enabled:
-        return None
-    try:
-        async with _make_client(timeout=15) as client:
+        # Serper 是国内可达的 Google 搜索代理，不走本地代理
+        async with _make_client(use_proxy=False, timeout=15) as client:
             resp = await client.post(
                 'https://google.serper.dev/videos',
                 headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},
-                json={'q': f'{query} site:youtube.com', 'num': 12},
+                json={'q': f'{query} site:youtube.com', 'num': 20},
             )
         if resp.status_code != 200:
             return None
@@ -149,17 +246,18 @@ async def _search_youtube_via_serper(query: str, page: int = 1):
                 'published_at': item.get('date', ''),
                 'view_count': 0,
             })
-        return results
+        return results if results else None
     except Exception:
         return None
 
 
 async def _search_youtube_direct(query: str, page: int = 1) -> list:
-    """直连 YouTube（需科学上网），Serper 不可用时的降级方案"""
+    """直连 YouTube（国外，需科学上网），Serper 不可用时的降级方案"""
     search_url = f'https://www.youtube.com/results?search_query={query.replace(" ", "+")}'
     headers = {**_HEADERS, 'Accept-Language': 'en-US,en;q=0.9'}
     try:
-        async with _make_client(timeout=15, follow_redirects=True) as client:
+        # YouTube 需要代理才能访问
+        async with _make_client(use_proxy=True, timeout=15, follow_redirects=True) as client:
             resp = await client.get(search_url, headers=headers)
         if resp.status_code != 200:
             raise ConnectionError(f'YouTube 返回 HTTP {resp.status_code}')
@@ -167,12 +265,16 @@ async def _search_youtube_direct(query: str, page: int = 1) -> list:
         if not match:
             raise ValueError('无法解析 YouTube 搜索结果')
         data = json.loads(match.group(1))
-        contents = data['contents']['twoColumnSearchResultsRenderer']['primaryContents']['sectionListRenderer']['contents']
+        contents = (
+            data['contents']['twoColumnSearchResultsRenderer']
+            ['primaryContents']['sectionListRenderer']['contents']
+        )
         results = []
         for section in contents:
             for item in section.get('itemSectionRenderer', {}).get('contents', []):
                 vr = item.get('videoRenderer')
-                if not vr: continue
+                if not vr:
+                    continue
                 video_id = vr.get('videoId', '')
                 title = ''.join(r.get('text', '') for r in vr.get('title', {}).get('runs', []))
                 duration_sec = _parse_duration(vr.get('lengthText', {}).get('simpleText', ''))
@@ -180,70 +282,39 @@ async def _search_youtube_direct(query: str, page: int = 1) -> list:
                 thumb = thumbs[-1]['url'] if thumbs else ''
                 author = ''.join(r.get('text', '') for r in vr.get('ownerText', {}).get('runs', []))
                 if video_id and title:
-                    results.append({'id': video_id, 'title': title,
+                    results.append({
+                        'id': video_id, 'title': title,
                         'url': f'https://www.youtube.com/watch?v={video_id}',
                         'platform': 'youtube', 'duration': duration_sec,
                         'thumbnail_url': thumb, 'author': author,
-                        'published_at': '', 'view_count': 0})
-                if len(results) >= 12: break
-            if len(results) >= 12: break
+                        'published_at': '', 'view_count': 0,
+                    })
+                if len(results) >= 20:
+                    break
+            if len(results) >= 20:
+                break
         return results
     except Exception:
-        # 直连失败时返回 YouTube 搜索跳转卡片，不抛错
-        yt_search_url = f'https://www.youtube.com/results?search_query={query.replace(" ", "+")}'
-        return [{
-            'id': 'youtube_search',
-            'title': f'在 YouTube 上搜索「{query}」（点击跳转）',
-            'url': yt_search_url,
-            'platform': 'youtube',
-            'duration': 0,
-            'thumbnail_url': '',
-            'author': 'YouTube',
-            'published_at': '',
-            'view_count': 0,
-        }]
+        yt_url = f'https://www.youtube.com/results?search_query={query.replace(" ", "+")}'
+        return [{'id': 'youtube_search', 'title': f'在 YouTube 上搜索「{query}」（点击跳转，需梯子）',
+                 'url': yt_url, 'platform': 'youtube', 'duration': 0,
+                 'thumbnail_url': '', 'author': 'YouTube', 'published_at': '', 'view_count': 0}]
 
+async def _search_twitter(db: Session, query: str, page: int = 1) -> list:
+    """搜索 Twitter/X：优先 Serper（国内直连），降级代理直连，最终返回跳转卡片"""
+    serper_key, serper_enabled = _get_serper_config(db)
 
-async def _search_twitter(query: str, page: int = 1) -> list:
-    """搜索 Twitter/X 内容：放弃 site: 限制，改为宽泛搜索 + 关键词过滤，保证有兜底结果"""
-    from database import SessionLocal
-    from models import Setting
-    import json as _json
-    db = SessionLocal()
-    try:
-        row = db.query(Setting).filter(Setting.key == 'api_key_serper').first()
-        serper_key = _json.loads(row.value) if row and row.value else None
-        row_enabled = db.query(Setting).filter(Setting.key == 'api_key_serper_enabled').first()
-        serper_enabled = _json.loads(row_enabled.value) if row_enabled and row_enabled.value is not None else True
-    finally:
-        db.close()
     if not serper_key or not serper_enabled:
-        # 未配置或已停用 Serper Key，尝试 twscrape（需用户配置 Twitter 账号）
-        try:
-            from services.twitter_service import search_twitter_videos
-            tw_results = await search_twitter_videos(query, limit=12)
-            if tw_results:
-                return tw_results
-        except Exception:
-            pass
-        # 两者都无法使用，返回兜底跳转卡片
-        twitter_search_url = f'https://twitter.com/search?q={query.replace(" ", "%20")}&f=video'
-        return [{
-            'id': 'twitter_search_no_key',
-            'title': f'在 Twitter/X 上搜索「{query}」视频（点击跳转）',
-            'url': twitter_search_url,
-            'platform': 'twitter',
-            'duration': 0,
-            'thumbnail_url': '',
-            'author': 'Twitter/X',
-            'published_at': '',
-            'view_count': 0,
-        }]
+        # 无 Serper 时，尝试走代理直连 Twitter 搜索页（需挂梯子）
+        proxy_results = await _search_twitter_direct(query, page)
+        if proxy_results:
+            return proxy_results
+        return [_twitter_fallback_card(query)]
 
     results = []
     try:
-        # 策略1: /videos 接口，限定 twitter.com OR x.com 域名
-        async with _make_client(timeout=15) as client:
+        # Serper 国内可达，不走代理
+        async with _make_client(use_proxy=False, timeout=15) as client:
             resp1 = await client.post(
                 'https://google.serper.dev/videos',
                 headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},
@@ -266,9 +337,8 @@ async def _search_twitter(query: str, page: int = 1) -> list:
                     'view_count': 0,
                 })
 
-        # 策略2: /search 接口补充，放宽筛选（不再只要 twitter.com）
         if len(results) < 5:
-            async with _make_client(timeout=15) as client:
+            async with _make_client(use_proxy=False, timeout=15) as client:
                 resp2 = await client.post(
                     'https://google.serper.dev/search',
                     headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},
@@ -292,44 +362,123 @@ async def _search_twitter(query: str, page: int = 1) -> list:
                         'view_count': 0,
                     })
 
-        # 策略3: 两个接口都无结果时，构造 Twitter 搜索结果作为兜底
         if not results:
-            twitter_search_url = f'https://twitter.com/search?q={query.replace(" ", "%20")}&f=video'
-            results.append({
-                'id': 'twitter_search',
-                'title': f'在 Twitter/X 上搜索「{query}」视频',
-                'url': twitter_search_url,
-                'platform': 'twitter',
-                'duration': 0,
-                'thumbnail_url': '',
-                'author': 'Twitter/X',
-                'published_at': '',
-                'view_count': 0,
-            })
+            results.append(_twitter_fallback_card(query))
 
     except Exception:
-        # 即使出错也返回兜底结果
-        twitter_search_url = f'https://twitter.com/search?q={query.replace(" ", "%20")}&f=video'
-        return [{
-            'id': 'twitter_search_fallback',
-            'title': f'在 Twitter/X 上搜索「{query}」',
-            'url': twitter_search_url,
-            'platform': 'twitter',
-            'duration': 0,
-            'thumbnail_url': '',
-            'author': 'Twitter/X',
-            'published_at': '',
-            'view_count': 0,
-        }]
+        return [_twitter_fallback_card(query, suffix='_err')]
 
     return results[:12]
 
 
-def _parse_duration(s: str) -> int:
-    if not s: return 0
-    parts = s.strip().split(':')
+def _twitter_fallback_card(query: str, suffix: str = '') -> dict:
+    """构造 Twitter 搜索跳转兜底卡片"""
+    url = f'https://twitter.com/search?q={query.replace(" ", "%20")}&f=video'
+    return {
+        'id': f'twitter_search{suffix}',
+        'title': f'在 Twitter/X 上搜索「{query}」视频（点击跳转）',
+        'url': url,
+        'platform': 'twitter',
+        'duration': 0,
+        'thumbnail_url': '',
+        'author': 'Twitter/X',
+        'published_at': '',
+        'view_count': 0,
+    }
+
+
+async def _search_twitter_direct(query: str, page: int = 1) -> list:
+    """走代理直连 Twitter/X 搜索——使用 Guest Token 接口，无需登录"""
+    results = []
     try:
-        if len(parts) == 2: return int(parts[0]) * 60 + int(parts[1])
-        elif len(parts) == 3: return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-    except ValueError: pass
-    return 0
+        # Step 1: 获取 Guest Token
+        async with _make_client(use_proxy=True, timeout=15) as client:
+            # 获取 bearer token
+            bearer = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'
+            # 申请 guest token
+            gt_resp = await client.post(
+                'https://api.twitter.com/1.1/guest/activate.json',
+                headers={
+                    'Authorization': f'Bearer {bearer}',
+                    'Content-Type': 'application/json',
+                }
+            )
+            if gt_resp.status_code != 200:
+                return []
+            guest_token = gt_resp.json().get('guest_token', '')
+            if not guest_token:
+                return []
+
+            # Step 2: 搜索请求
+            params = {
+                'q': query,
+                'tweet_search_mode': 'live',
+                'result_filter': 'video',
+                'count': '20',
+                'query_source': 'typed_query',
+                'pc': '1',
+                'spelling_corrections': '1',
+            }
+            search_resp = await client.get(
+                'https://api.twitter.com/2/search/adaptive.json',
+                params=params,
+                headers={
+                    'Authorization': f'Bearer {bearer}',
+                    'x-guest-token': guest_token,
+                    'x-twitter-active-user': 'yes',
+                    'x-twitter-client-language': 'zh-cn',
+                    'Referer': 'https://twitter.com/',
+                    **_HEADERS,
+                }
+            )
+            if search_resp.status_code != 200:
+                return []
+
+            data = search_resp.json()
+            tweets = data.get('globalObjects', {}).get('tweets', {})
+            users = data.get('globalObjects', {}).get('users', {})
+
+            for tweet_id, tweet in tweets.items():
+                # 只要有视频的推文
+                if not tweet.get('extended_entities', {}).get('media'):
+                    continue
+                has_video = any(
+                    m.get('type') in ('video', 'animated_gif')
+                    for m in tweet.get('extended_entities', {}).get('media', [])
+                )
+                if not has_video:
+                    continue
+
+                user_id = str(tweet.get('user_id_str', ''))
+                user = users.get(user_id, {})
+                screen_name = user.get('screen_name', '')
+                thumb = ''
+                for m in tweet.get('extended_entities', {}).get('media', []):
+                    if m.get('type') in ('video', 'animated_gif'):
+                        thumb = m.get('media_url_https', '')
+                        break
+                duration_ms = 0
+                for m in tweet.get('extended_entities', {}).get('media', []):
+                    vi = m.get('video_info', {})
+                    duration_ms = vi.get('duration_millis', 0)
+                    break
+
+                results.append({
+                    'id': tweet_id,
+                    'title': tweet.get('full_text', tweet.get('text', ''))[:120],
+                    'url': f'https://twitter.com/{screen_name}/status/{tweet_id}',
+                    'platform': 'twitter',
+                    'duration': duration_ms // 1000,
+                    'thumbnail_url': thumb,
+                    'author': screen_name,
+                    'published_at': tweet.get('created_at', ''),
+                    'view_count': 0,
+                })
+                if len(results) >= 12:
+                    break
+
+    except Exception as e:
+        print(f'[Twitter direct] error: {e}')
+    return results
+
+

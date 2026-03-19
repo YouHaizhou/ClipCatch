@@ -96,6 +96,39 @@ def get_library(
         return {'code': 1, 'message': '获取媒体库失败'}
 
 
+@router.delete('/library/{video_id}')
+def delete_video(video_id: int, delete_file: bool = False, db: Session = Depends(get_db)):
+    """删除视频记录（可选同时删除本地文件）"""
+    try:
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            return {'code': 1, 'message': '视频不存在'}
+
+        file_deleted = False
+        if delete_file and video.local_file_path:
+            try:
+                if os.path.exists(video.local_file_path):
+                    os.remove(video.local_file_path)
+                    file_deleted = True
+            except Exception as e:
+                return {'code': 1, 'message': f'文件删除失败: {e}'}
+
+        # 级联删除关联数据
+        from models import DownloadTask
+        db.query(Note).filter(Note.video_id == video_id).delete()
+        db.query(AITask).filter(AITask.video_id == video_id).delete()
+        db.query(DownloadTask).filter(DownloadTask.video_id == video_id).delete()
+        db.delete(video)
+        db.commit()
+
+        return {'code': 0, 'data': {'success': True, 'file_deleted': file_deleted}}
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        return {'code': 1, 'message': '删除失败'}
+
+
 @router.get('/library/{video_id}/stream')
 async def stream_video(video_id: int, db: Session = Depends(get_db)):
     """视频流接口：支持直接播放，供前端 video 标签使用"""

@@ -20,18 +20,34 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 export default function VideoCard({ video, onDownload, onPreview }: VideoCardProps) {
   const [imgError, setImgError] = useState(false)
-  const thumb = proxyImageUrl(video.thumbnailUrl ?? '')
+  const [imgBlank, setImgBlank] = useState(false)
+  // For YouTube/Twitter: try direct URL first (works when user has system proxy/VPN);
+  // fallback to backend proxy; fallback to placeholder on error
+  const isYtOrTw = video.platform === 'youtube' || video.platform === 'twitter'
+  const directUrl = video.thumbnailUrl ?? ''
+  const proxyUrl  = proxyImageUrl(directUrl)
+  // Use direct URL for yt/tw so system proxy is used; use backend proxy for bilibili
+  const thumb = isYtOrTw ? directUrl : proxyUrl
+  const showImg = !imgError && !imgBlank && !!thumb
 
   return (
     <div className="group flex flex-col rounded-xl overflow-hidden bg-card border border-border hover:border-primary/40 transition-all duration-200 hover:shadow-lg hover:shadow-primary/5">
       <div className="relative aspect-video bg-muted overflow-hidden cursor-pointer" onClick={() => onPreview?.(video)}>
-        {!imgError && thumb ? (
+        {showImg ? (
           <img src={thumb} alt={video.title}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            onError={() => setImgError(true)} />
+            onError={() => setImgError(true)}
+            onLoad={e => {
+              const img = e.currentTarget
+              // Detect 1x1 transparent fallback PNG (backend returns when no proxy)
+              if (img.naturalWidth <= 1 || img.naturalHeight <= 1) setImgBlank(true)
+            }} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-            <Play size={32} className="opacity-20" />
+          <div className="w-full h-full flex items-center justify-center text-muted-foreground flex-col gap-1">
+            <Play size={28} className="opacity-20" />
+            {(video.platform === 'youtube' || video.platform === 'twitter') && (
+              <span className="text-xs opacity-30">点击预览</span>
+            )}
           </div>
         )}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-200 flex items-center justify-center">

@@ -27,7 +27,7 @@ def _to_camel(item: dict) -> dict:
 
 @router.post('/search')
 async def search(body: dict, db: Session = Depends(get_db)):
-    """搜索视频接口"""
+    """搜索视频接口，结果不足时自动补充相关视频"""
     query = body.get('query', '').strip()
     if not query:
         return {'code': 1, 'message': '请输入搜索关键词'}
@@ -42,8 +42,28 @@ async def search(body: dict, db: Session = Depends(get_db)):
             page=body.get('page', 1),
             seed=body.get('seed'),
         )
-        # 将结果字段转为前端期望的 camelCase
         camel_results = [_to_camel(v) for v in result.get('results', [])]
+
+        # 结果不足 10 条且是第一页时，补充相关视频（取关键词首词重搜）
+        if len(camel_results) < 10 and body.get('page', 1) == 1:
+            try:
+                first_word = query.split()[0] if ' ' in query else query
+                if first_word != query:
+                    related = await search_videos(
+                        db=db, query=first_word,
+                        platform=body.get('platform', 'all'),
+                        duration_filter=None, sort='relevance', page=1,
+                    )
+                    seen_ids = {v['id'] for v in camel_results}
+                    for v in related.get('results', []):
+                        item = _to_camel(v)
+                        if item['id'] not in seen_ids:
+                            item['isRelated'] = True
+                            camel_results.append(item)
+                            seen_ids.add(item['id'])
+            except Exception:
+                pass
+
         return {
             'code': 0,
             'data': {
