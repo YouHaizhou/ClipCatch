@@ -3,7 +3,7 @@ title ClipCatch
 cd /d "%~dp0"
 
 echo [1/3] Starting backend...
-start "ClipCatch-Backend" /min cmd /k "cd /d "%~dp0apps\backend\src" && python main.py --port 57891 --host 127.0.0.1"
+start "ClipCatch-Backend" /min cmd /k "cd /d "%~dp0apps\backend\src" && E:\Code-env\Python\Anaconda\python.exe main.py --port 57891 --host 127.0.0.1"
 timeout /t 7 /nobreak >nul
 
 echo [2/3] Starting frontend...
