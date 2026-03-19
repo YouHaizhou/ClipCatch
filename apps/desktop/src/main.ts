@@ -197,12 +197,18 @@ ipcMain.handle('twitter:login-window', async () => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        partition: 'persist:twitter-login',  // 独立 session
-        // 不加载任何扩展
+        partition: 'persist:twitter-login',
       },
     })
 
-    // 设置 User-Agent 为正常浏览器，避免被识别为机器人
+    // 注入脚本删除 webdriver 标志，避免被 X.com 检测为自动化浏览器
+    loginWin.webContents.on('dom-ready', () => {
+      loginWin.webContents.executeJavaScript(
+        "try { Object.defineProperty(navigator, \"webdriver\", { get: () => undefined }) } catch(e) {}"
+      ).catch(() => {})
+    })
+
+    // 设置正常浏览器 User-Agent
     loginWin.webContents.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     )
