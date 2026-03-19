@@ -186,29 +186,43 @@ ipcMain.handle('shell:open-external', async (_event, url: string) => {
 // ---------- Twitter 登录窗口（内嵌浏览器自动抓 Cookie）----------
 ipcMain.handle('twitter:login-window', async () => {
   return new Promise((resolve) => {
+    // 使用独立 partition，避免扩展/隐私设置干扰
     const loginWin = new BrowserWindow({
-      width: 600,
-      height: 700,
-      title: '登录 Twitter/X',
+      width: 520,
+      height: 680,
+      title: 'ClipCatch — 登录 Twitter/X',
+      resizable: false,
+      center: true,
+      frame: true,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
+        partition: 'persist:twitter-login',  // 独立 session
+        // 不加载任何扩展
       },
     })
 
-    loginWin.loadURL('https://twitter.com/login')
+    // 设置 User-Agent 为正常浏览器，避免被识别为机器人
+    loginWin.webContents.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    )
+
+    loginWin.loadURL('https://x.com/i/flow/login')
+    loginWin.setMenuBarVisibility(false)
 
     // 轮询检测 auth_token cookie
     const timer = setInterval(async () => {
       try {
-        const cookies = await loginWin.webContents.session.cookies.get({ domain: '.twitter.com' })
-        const authToken = cookies.find(c => c.name === 'auth_token')
-        const ct0 = cookies.find(c => c.name === 'ct0')
+        const allCookies = [
+          ...await loginWin.webContents.session.cookies.get({ domain: '.twitter.com' }),
+          ...await loginWin.webContents.session.cookies.get({ domain: '.x.com' }),
+        ]
+        const authToken = allCookies.find(c => c.name === 'auth_token')
+        const ct0 = allCookies.find(c => c.name === 'ct0')
         if (authToken && ct0) {
           clearInterval(timer)
-          // 获取所有 cookie 构建 JSON
           const cookieObj: Record<string, string> = {}
-          cookies.forEach(c => { cookieObj[c.name] = c.value })
+          allCookies.forEach(c => { cookieObj[c.name] = c.value })
           loginWin.close()
           resolve({ success: true, cookies: cookieObj, auth_token: authToken.value, ct0: ct0.value })
         }
