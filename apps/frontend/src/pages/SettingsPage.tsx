@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
-import { Settings, CheckCircle, XCircle, Loader2, FolderOpen, Trash2, ChevronRight, Cpu, Twitter, UserX, Search as SearchIcon } from 'lucide-react'
+﻿import { useState, useEffect } from 'react'
+import { Settings, CheckCircle, XCircle, Loader2, FolderOpen, Trash2, ChevronRight, Cpu, UserX, Search as SearchIcon, Wifi, WifiOff, RefreshCw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/store/settingsStore'
 import { apiPost, apiGet, apiDelete } from '@/services/api'
 import { showToast } from '@/components/Toast'
 
-type TabKey = 'api' | 'search' | 'storage' | 'whisper' | 'twitter'
+type TabKey = 'api' | 'search' | 'storage' | 'whisper' | 'twitter' | 'network'
 
 interface WhisperStatus { available: boolean; path: string; model_size: string; error: string }
 
@@ -24,13 +24,29 @@ const MODEL_MAP: Record<string, string> = {
 }
 
 const TABS: [TabKey, string][] = [
-  ['api',     'AI 模型'],
-  ['search',  '搜索设置'],
-  ['storage', '存储管理'],
-  ['whisper', '语音模型'],
-  ['twitter', 'Twitter'],
+  ['api',     'AI \u6a21\u578b'],
+  ['search',  '\u641c\u7d22\u8bbe\u7f6e'],
+  ['storage', '\u5b58\u50a8\u7ba1\u7406'],
+  ['whisper', '\u8bed\u97f3\u6a21\u578b'],
+  ['network', '\u7f51\u7edc\u8bca\u65ad'],
 ]
 
+interface DiagCheck {
+  name: string
+  ok: boolean
+  latency_ms: number
+  error_code?: string
+  hint?: string
+  suggestion?: string
+}
+
+interface DiagResult {
+  is_wsl: boolean
+  proxy_source: 'env' | 'winreg' | 'none'
+  proxy_address: string | null
+  suggestion: string | null
+  checks: DiagCheck[]
+}
 export default function SettingsPage() {
   const { apiStatus, testConnection, loadSettings, markKeyConfigured } = useSettingsStore()
   const [activeTab, setActiveTab]     = useState<TabKey>('api')
@@ -40,15 +56,15 @@ export default function SettingsPage() {
   const [whisperPath, setWhisperPath]         = useState('')
   const [whisperStatus, setWhisperStatus]     = useState<WhisperStatus | null>(null)
   const [whisperSaving, setWhisperSaving]     = useState(false)
-  const [twitterAccounts, setTwitterAccounts] = useState<{ username: string; active: boolean }[]>([])
-  const [twitterForm, setTwitterForm]         = useState({ username: '' })
-  const [twitterLoginLoading, setTwitterLoginLoading] = useState(false)
   const [enabledKeys, setEnabledKeys] = useState<Record<string, boolean>>({})
   const [selectedModel, setSelectedModel] = useState('deepseek')
   const [keyHints, setKeyHints] = useState<Record<string, string>>({})
+  // 网络诊断状态
+  const [diagResult, setDiagResult]   = useState<DiagResult | null>(null)
+  const [diagLoading, setDiagLoading] = useState(false)
 
   useEffect(() => {
-    loadStorageInfo(); loadWhisperStatus(); loadTwitterStatus(); loadEnabledKeys()
+    loadStorageInfo(); loadWhisperStatus(); loadEnabledKeys()
     apiGet<Record<string, unknown>>('/api/settings').then(d => {
       const m = (d.llm_model as string) ?? ''
       if (m.includes('gpt'))    setSelectedModel('openai')
@@ -74,12 +90,6 @@ export default function SettingsPage() {
   const loadEnabledKeys = async () => {
     try { const d = await apiGet<Record<string, boolean>>('/api/settings/enabled-keys'); setEnabledKeys(d) } catch {}
   }
-  const loadTwitterStatus = async () => {
-    try {
-      const d = await apiGet<{ configured: boolean; accounts: { username: string; active: boolean }[] }>('/api/twitter/account/status')
-      setTwitterAccounts(d.accounts ?? [])
-    } catch {}
-  }
   const loadStorageInfo = async () => {
     try {
       const d = await apiGet<Record<string, string>>('/api/settings')
@@ -91,32 +101,6 @@ export default function SettingsPage() {
       const d = await apiGet<WhisperStatus>('/api/settings/whisper-status')
       setWhisperStatus(d); if (d.path) setWhisperPath(d.path)
     } catch {}
-  }
-
-  const handleOneClickLogin = async () => {
-    if (!(window.electronAPI as any)?.twitterLogin) { showToast('error', '仅 Electron 环境支持一键登录'); return }
-    setTwitterLoginLoading(true)
-    try {
-      const result = await (window.electronAPI as any).twitterLogin()
-      if (result.success && result.cookies && result.auth_token) {
-        const username = twitterForm.username.trim() ||
-          (result.cookies['screen_name'] || result.cookies['twid'] || '').replace('u%3D', '') || 'twitter_user'
-        const res = await apiPost<{ success: boolean; message: string }>('/api/twitter/account', {
-          username, password: '', email: '', email_password: '', cookies: JSON.stringify(result.cookies),
-        })
-        if (res.success) { showToast('success', res.message); setTwitterForm({ username: '' }); await loadTwitterStatus() }
-        else showToast('error', res.message)
-      } else showToast('error', result.message || '登录失败')
-    } catch (e) { showToast('error', String(e)) }
-    finally { setTwitterLoginLoading(false) }
-  }
-
-  const handleRemoveTwitterAccount = async (username: string) => {
-    try {
-      await apiDelete<{ success: boolean }>('/api/twitter/account', { username })
-      showToast('success', `已删除账号 @${username}`)
-      await loadTwitterStatus()
-    } catch (e) { showToast('error', String(e)) }
   }
 
   const handleSaveAndTest = async (provider: typeof API_CONFIGS[number]['provider'], settingKey: string) => {
@@ -178,6 +162,24 @@ export default function SettingsPage() {
     if (s === 'error')   return <XCircle size={14} className="text-red-400" />
     if (s === 'testing') return <Loader2 size={14} className="text-yellow-400 animate-spin" />
     return <span className="w-3.5 h-3.5 rounded-full bg-muted inline-block" />
+  }
+
+  const runDiagnostics = async () => {
+    setDiagLoading(true)
+    try {
+      const d = await apiGet<DiagResult>("/api/diagnostics/network")
+      setDiagResult(d)
+    } catch (e) {
+      showToast("error", "\u8bca\u65ad\u5931\u8d25\uff1a" + String(e))
+    } finally {
+      setDiagLoading(false)
+    }
+  }
+
+  const proxySourceLabel = (src: string) => {
+    if (src === "env")    return "\u73af\u5883\u53d8\u91cf"
+    if (src === "winreg") return "Windows \u6ce8\u518c\u8868"
+    return "\u672a\u68c0\u6d4b\u5230"
   }
 
   const toggleKey = async (settingKey: string) => {
@@ -369,41 +371,80 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ===== Twitter Tab ===== */}
-          {activeTab === 'twitter' && (
-            <div className="flex flex-col gap-5 max-w-lg">
-              <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-200 flex flex-col gap-1.5">
-                <p className="font-semibold text-yellow-300">⚠️ 免责声明</p>
-                <p>使用 Twitter 账号登录搜索视频，可能违反 Twitter/X 服务条款。账号存在被封禁风险，请使用小号。本功能由用户自行承担全部责任。</p>
-              </div>
-              {twitterAccounts.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">已配置账号</label>
-                  {twitterAccounts.map(acc => (
-                    <div key={acc.username} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-card border border-border">
-                      <Twitter size={14} className="text-sky-400 shrink-0" />
-                      <span className="flex-1 text-sm font-mono">@{acc.username}</span>
-                      <span className={cn('text-xs px-2 py-0.5 rounded-full', acc.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')}>
-                        {acc.active ? '活跃' : '已失效'}
-                      </span>
-                      <button onClick={() => handleRemoveTwitterAccount(acc.username)}
-                        className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors">
-                        <UserX size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex flex-col gap-3">
-                <input type="text" placeholder="用户名（不含@）" data-selectable="true"
-                  value={twitterForm.username} onChange={e => setTwitterForm(p => ({...p, username: e.target.value}))}
-                  className="px-3 py-2 rounded-lg bg-input border border-border text-sm outline-none focus:border-primary transition-colors" />
-                <button onClick={handleOneClickLogin} disabled={twitterLoginLoading}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 disabled:opacity-40 transition-colors w-full justify-center">
-                  {twitterLoginLoading ? <Loader2 size={15} className="animate-spin" /> : <Twitter size={15} />}
-                  {twitterLoginLoading ? '等待浏览器登录...' : '一键登录 Twitter（推荐）'}
+
+          {/* ===== 网络诊断 Tab ===== */}
+          {activeTab === 'network' && (
+            <div className="flex flex-col gap-4 max-w-lg">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">并行检测各网络端点连通性，帮助排查代理和连接问题。</p>
+                <button onClick={runDiagnostics} disabled={diagLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 disabled:opacity-40">
+                  {diagLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  {diagLoading ? '诊断中...' : '开始检测'}
                 </button>
               </div>
+
+              {!diagResult && !diagLoading && (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
+                  <Wifi size={36} className="opacity-20" />
+                  <p className="text-xs">点击『开始检测』运行网络诊断</p>
+                </div>
+              )}
+
+              {diagResult && (
+                <>
+                  {/* 环境信息 */}
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border flex flex-col gap-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">运行环境</span>
+                      <span className="font-medium">{diagResult.is_wsl ? 'WSL (Linux)' : 'Windows'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">代理来源</span>
+                      <span className="font-medium">{proxySourceLabel(diagResult.proxy_source)}</span>
+                    </div>
+                    {diagResult.proxy_address && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">代理地址</span>
+                        <span className="font-mono text-primary">{diagResult.proxy_address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 全局建议 */}
+                  {diagResult.suggestion && (
+                    <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex gap-2">
+                      <AlertTriangle size={14} className="text-yellow-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-yellow-200">{diagResult.suggestion}</p>
+                    </div>
+                  )}
+
+                  {/* 检测项列表 */}
+                  <div className="flex flex-col gap-2">
+                    {diagResult.checks.map((check) => (
+                      <div key={check.name} className={`p-3 rounded-xl border flex flex-col gap-1 ${
+                        check.ok ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          {check.ok
+                            ? <CheckCircle size={13} className="text-emerald-400 shrink-0" />
+                            : <XCircle size={13} className="text-red-400 shrink-0" />}
+                          <span className="text-sm font-medium flex-1">{check.name}</span>
+                          {check.ok
+                            ? <span className="text-xs text-emerald-400">{check.latency_ms}ms</span>
+                            : <span className="text-xs text-red-400">{check.error_code ?? '失败'}</span>}
+                        </div>
+                        {!check.ok && check.hint && (
+                          <p className="text-xs text-muted-foreground ml-5">{check.hint}</p>
+                        )}
+                        {!check.ok && check.suggestion && (
+                          <p className="text-xs text-yellow-300/80 ml-5">建议：{check.suggestion}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

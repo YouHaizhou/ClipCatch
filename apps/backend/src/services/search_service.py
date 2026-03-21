@@ -81,6 +81,13 @@ _HEADERS = {
 }
 
 
+def _get_yt_data_api_key(db: Session) -> Optional[str]:
+    """从 DB 读取 YouTube Data API v3 Key"""
+    from models import Setting
+    row = db.query(Setting).filter(Setting.key == 'api_key_youtube_data').first()
+    return json.loads(row.value) if row and row.value else None
+
+
 def _get_serper_config(db: Session) -> tuple[Optional[str], bool]:
     """
     从已有的 db Session 读取 Serper API Key 和启用状态。
@@ -206,12 +213,22 @@ async def _search_bilibili(query: str, page: int = 1, sort: str = 'relevance') -
     return results
 
 async def _search_youtube(db: Session, query: str, page: int = 1) -> list:
-    """YouTube 搜索：优先 Serper API（国内可用），无 Key 时降级走代理直连"""
+    """YouTube 搜索降级链：Serper -> YouTube Data API v3 -> yt-dlp 直连 -> fallback"""
+    # 1. Serper（国内直连，最稳定）
     serper_key, serper_enabled = _get_serper_config(db)
     if serper_key and serper_enabled:
         serper_results = await _search_youtube_via_serper(serper_key, query, page)
         if serper_results:
             return serper_results
+
+    # 2. YouTube Data API v3（国内可达，免费配额 10000 次/天，无需代理）
+    yt_key = _get_yt_data_api_key(db)
+    if yt_key:
+        yt_results = await _search_youtube_via_data_api(yt_key, query, page)
+        if yt_results:
+            return yt_results
+
+    # 3. yt-dlp 直连（需代理）-> fallback
     return await _search_youtube_direct(query, page)
 
 
@@ -388,97 +405,10 @@ def _twitter_fallback_card(query: str, suffix: str = '') -> dict:
 
 
 async def _search_twitter_direct(query: str, page: int = 1) -> list:
-    """走代理直连 Twitter/X 搜索——使用 Guest Token 接口，无需登录"""
-    results = []
-    try:
-        # Step 1: 获取 Guest Token
-        async with _make_client(use_proxy=True, timeout=15) as client:
-            # 获取 bearer token
-            bearer = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'
-            # 申请 guest token
-            gt_resp = await client.post(
-                'https://api.twitter.com/1.1/guest/activate.json',
-                headers={
-                    'Authorization': f'Bearer {bearer}',
-                    'Content-Type': 'application/json',
-                }
-            )
-            if gt_resp.status_code != 200:
-                return []
-            guest_token = gt_resp.json().get('guest_token', '')
-            if not guest_token:
-                return []
-
-            # Step 2: 搜索请求
-            params = {
-                'q': query,
-                'tweet_search_mode': 'live',
-                'result_filter': 'video',
-                'count': '20',
-                'query_source': 'typed_query',
-                'pc': '1',
-                'spelling_corrections': '1',
-            }
-            search_resp = await client.get(
-                'https://api.twitter.com/2/search/adaptive.json',
-                params=params,
-                headers={
-                    'Authorization': f'Bearer {bearer}',
-                    'x-guest-token': guest_token,
-                    'x-twitter-active-user': 'yes',
-                    'x-twitter-client-language': 'zh-cn',
-                    'Referer': 'https://twitter.com/',
-                    **_HEADERS,
-                }
-            )
-            if search_resp.status_code != 200:
-                return []
-
-            data = search_resp.json()
-            tweets = data.get('globalObjects', {}).get('tweets', {})
-            users = data.get('globalObjects', {}).get('users', {})
-
-            for tweet_id, tweet in tweets.items():
-                # 只要有视频的推文
-                if not tweet.get('extended_entities', {}).get('media'):
-                    continue
-                has_video = any(
-                    m.get('type') in ('video', 'animated_gif')
-                    for m in tweet.get('extended_entities', {}).get('media', [])
-                )
-                if not has_video:
-                    continue
-
-                user_id = str(tweet.get('user_id_str', ''))
-                user = users.get(user_id, {})
-                screen_name = user.get('screen_name', '')
-                thumb = ''
-                for m in tweet.get('extended_entities', {}).get('media', []):
-                    if m.get('type') in ('video', 'animated_gif'):
-                        thumb = m.get('media_url_https', '')
-                        break
-                duration_ms = 0
-                for m in tweet.get('extended_entities', {}).get('media', []):
-                    vi = m.get('video_info', {})
-                    duration_ms = vi.get('duration_millis', 0)
-                    break
-
-                results.append({
-                    'id': tweet_id,
-                    'title': tweet.get('full_text', tweet.get('text', ''))[:120],
-                    'url': f'https://twitter.com/{screen_name}/status/{tweet_id}',
-                    'platform': 'twitter',
-                    'duration': duration_ms // 1000,
-                    'thumbnail_url': thumb,
-                    'author': screen_name,
-                    'published_at': tweet.get('created_at', ''),
-                    'view_count': 0,
-                })
-                if len(results) >= 12:
-                    break
-
-    except Exception as e:
-        print(f'[Twitter direct] error: {e}')
-    return results
+    """Twitter/X Guest Token API 已于 2023-2024 年永久下线（404/403），此路径不可用。
+    诊断结论：Stage 3 HTTP 404 — 平台策略问题，非代码 bug，无免费可用路径。
+    请配置 Serper API Key 使用 Serper 搜索 Twitter 视频。
+    """
+    return []
 
 

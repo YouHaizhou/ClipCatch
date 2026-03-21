@@ -26,6 +26,8 @@ export type VideoQuality = '1080p' | '720p' | '480p' | 'audio_only'
 
 export type AiStatus = 'none' | 'processing' | 'completed' | 'failed'
 
+export type MermaidDiagramType = 'mindmap' | 'flowchart' | 'graph'
+
 // ---------- 下载任务 ----------
 export interface DownloadTask {
   id: number
@@ -59,7 +61,7 @@ export interface AiTask {
   completedAt?: string
 }
 
-export type AiMode = 'text_only' | 'multimodal'
+export type AiMode = 'text_only' | 'multimodal' | 'extract_only'
 
 export type PromptTemplate =
   | 'summary'

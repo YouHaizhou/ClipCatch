@@ -57,8 +57,9 @@ async def create_ai_task(body: dict, db: Session = Depends(get_db)):
     db.refresh(task)
 
     # 启动后台处理（不 await）
+    diagram_type = body.get('diagram_type', 'mindmap')
     asyncio.create_task(
-        _run_ai_pipeline(task.id, video_id, mode, template)
+        _run_ai_pipeline(task.id, video_id, mode, template, diagram_type)
     )
 
     return {'code': 0, 'data': {'task_id': task.id, 'status': 'queued'}}
@@ -69,6 +70,7 @@ async def _run_ai_pipeline(
     video_id: int,
     mode: str,
     template: str,
+    diagram_type: str = 'mindmap',
 ) -> None:
     """
     AI 处理主流程（在独立的 asyncio Task 中运行）：
@@ -139,6 +141,56 @@ async def _run_ai_pipeline(
             task_row.transcript = transcript
             db.commit()
 
+        # extract_only 模式：只转写，不调用 LLM
+        task_row = db.query(AITask).filter(AITask.id == task_id).first()
+        if task_row and task_row.mode == 'extract_only':
+            word_count = len(transcript)
+            # 直接把转写文本作为内容保存
+            note = Note(
+                video_id=video_id,
+                ai_task_id=task_id,
+                markdown_content=transcript,
+                word_count=word_count,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(note)
+            update_status('completed')
+            db.commit()
+            db.refresh(note)
+            # 把全文通过 token 流推出（分块推送避免单包过大）
+            chunk_size = 200
+            for i in range(0, len(transcript), chunk_size):
+                _push(task_id, {'type': 'token', 'content': transcript[i:i+chunk_size]})
+            _push(task_id, {'type': 'done', 'note_id': note.id, 'noteId': note.id,
+                            'word_count': word_count, 'wordCount': word_count})
+            return
+
+        # --- Step 3: extract_only 模式：跳过 LLM，直接保存转写文本 ---
+        if mode == 'extract_only':
+            word_count = len(transcript)
+            note = Note(
+                video_id=video_id,
+                ai_task_id=task_id,
+                markdown_content=transcript,
+                word_count=word_count,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(note)
+            update_status('completed')
+            db.commit()
+            db.refresh(note)
+            chunk_size = 200
+            for i in range(0, len(transcript), chunk_size):
+                _push(task_id, {'type': 'token', 'content': transcript[i:i+chunk_size]})
+            _push(task_id, {
+                'type': 'done',
+                'note_id': note.id, 'noteId': note.id,
+                'word_count': word_count, 'wordCount': word_count,
+            })
+            return
+
         # --- Step 3: LLM 生成 ---
         on_progress('generating', '正在 AI 生成摘要...')
         content_buffer = []
@@ -154,6 +206,7 @@ async def _run_ai_pipeline(
             db=db,
             on_token=on_token,
             on_progress=on_progress,
+            diagram_type=diagram_type,
         )
 
         # --- Step 4: 保存笔记 ---
@@ -272,3 +325,13 @@ def list_ai_tasks(video_id: int = None, db: Session = Depends(get_db)):
             for t in tasks
         ]
     }
+
+@router.get('/ai/tasks/{task_id}/transcript')
+def get_transcript(task_id: int, db: Session = Depends(get_db)):
+    """获取 AI 任务的原始转写文本"""
+    task = db.query(AITask).filter(AITask.id == task_id).first()
+    if not task:
+        return {'code': 1, 'message': '任务不存在'}
+    if not task.transcript:
+        return {'code': 1, 'message': '暂无转写文本，请先运行 AI 分析'}
+    return {'code': 0, 'data': {'transcript': task.transcript, 'word_count': len(task.transcript)}}

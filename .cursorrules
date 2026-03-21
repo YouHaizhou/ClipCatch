@@ -24,7 +24,7 @@
 ## 🔄 任务分发工作流
 
 1. 直接在 `apps/[app]/.agent/tasks/` 创建任务文件，命名格式：`YYYY-MM-DD-[优先级]-[类型]-[描述].md`
-2. 主 Agent 创建分支（在 Windows PowerShell 执行，WSL 内 push 会失败）
+2. 主 Agent 创建分支（在 Windows PowerShell 执行）
 3. 任务文件 `## Git 信息` 区块必须填写分支名
 4. 子 Agent 完成后将任务文件移入 `completed/`，补充 `## 完成记录` 区块
 5. 主 Agent 审查 → 将验收结果写入 `apps/[app]/.agent/status.md` → 通过后 merge
@@ -83,18 +83,17 @@ docs: update API documentation
 - **项目位置**：`g:\求职\项目\Resource-Seach-Summary\video-ai-desktop\`
 - **Shell**：PowerShell（命令用 `;` 分隔，不用 `&&`）
 - **Node**：v20.x，pnpm v10.x
-- **Python**：系统 Python 或虚拟环境，后端在 WSL 内运行
-- **后端启动**（WSL 内）：
-  ```bash
-  cd /root/projects/video-ai-desktop/apps/backend/src
-  HOME=/tmp/VideoAI-home KMP_DUPLICATE_LIB_OK=TRUE \
-    /root/projects/video-ai-desktop/.env/venv-linux/bin/python3 \
-    main.py --port 57891 --host 127.0.0.1
+- **Python**：系统 Python 或虚拟环境，后端在 Windows 本地运行
+- **后端启动**（PowerShell）：
+  ```powershell
+  cd apps/backend/src
+  $env:KMP_DUPLICATE_LIB_OK='TRUE'
+  python main.py --port 57891 --host 127.0.0.1
   ```
 - **前端启动**（Windows PowerShell）：`cd apps/frontend; pnpm dev`
 - **前端端口**：5173
 - **后端端口**：57891
-- **git push**：必须在 Windows PowerShell 执行（WSL 内代理拦截会失败）
+- **git push**：在 Windows PowerShell 执行
 
 ---
 

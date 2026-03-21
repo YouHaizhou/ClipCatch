@@ -69,16 +69,15 @@ return {'code': 1, 'message': '具体错误'}
 
 ## 🖥️ 运行环境
 
-- **后端在 WSL（Ubuntu 22.04）内运行**
-- **启动命令**：
-  ```bash
-  cd /root/projects/video-ai-desktop/apps/backend/src
-  HOME=/tmp/VideoAI-home KMP_DUPLICATE_LIB_OK=TRUE \
-    /root/projects/video-ai-desktop/.env/venv-linux/bin/python3 \
-    main.py --port 57891 --host 127.0.0.1
+- **后端在 Windows 本地运行**
+- **启动命令**（PowerShell）：
+  ```powershell
+  cd apps/backend/src
+  $env:KMP_DUPLICATE_LIB_OK='TRUE'
+  python main.py --port 57891 --host 127.0.0.1
   ```
 - **健康检查**：`curl http://127.0.0.1:57891/health`
-- **数据库**：`/tmp/VideoAI-home/VideoAI/app.db`
+- **数据库**：`~/VideoAI/app.db`（Windows 用户目录）
 
 ## 📚 初始化必读
 

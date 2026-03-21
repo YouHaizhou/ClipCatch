@@ -1,7 +1,7 @@
 // WorkspacePage — AI 工作台
 // 进度状态持久化到 aiStore，切换页面不丢失
 import { useEffect, useState } from 'react'
-import { Cpu, Play, ChevronDown, Loader2, CheckCircle, XCircle, RotateCcw, Square, Edit2, Eye } from 'lucide-react'
+import { Cpu, Play, ChevronDown, Loader2, CheckCircle, XCircle, RotateCcw, Square, Edit2, Eye, FolderOpen, FileText } from 'lucide-react'
 import { cn, formatDuration } from '@/lib/utils'
 import { apiPost, apiGet, createSSE, proxyImageUrl } from '@/services/api'
 import { useAiStore } from '@/store/aiStore'
@@ -9,7 +9,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { showToast } from '@/components/Toast'
 import MarkdownRenderer from '@/components/MarkdownRenderer'
 import ExportToolbar from '@/components/ExportToolbar'
-import type { AiMode, AiStreamEvent, PromptTemplate } from '@/types'
+import type { AiMode, AiStreamEvent, MermaidDiagramType } from '@/types'
 
 interface LibraryVideo {
   video_id: number
@@ -18,13 +18,6 @@ interface LibraryVideo {
   duration: number
   has_note: boolean
 }
-
-const TEMPLATES: { key: PromptTemplate; label: string; desc: string }[] = [
-  { key: 'summary',   label: '综合摘要',   desc: '全面概述内容要点和关键洞见' },
-  { key: 'timeline',  label: '详细时间轴', desc: '按时间顺序梳理内容脉络' },
-  { key: 'meeting',   label: '会议纪要',   desc: '提取决议、待办和关键结论' },
-  { key: 'keypoints', label: '知识点提取', desc: '归纳核心知识点和学习要点' },
-]
 
 const STAGE_LABELS: Record<string, string> = {
   queued:       '等待处理...',
@@ -40,12 +33,23 @@ export default function WorkspacePage() {
   const [videos, setVideos] = useState<LibraryVideo[]>([])
   const [selectedVideo, setSelectedVideo] = useState<LibraryVideo | null>(null)
   const [mode, setMode] = useState<AiMode>('text_only')
-  const [template, setTemplate] = useState<PromptTemplate>('summary')
+  const [diagramType, setDiagramType] = useState<MermaidDiagramType>('mindmap')
   const [showVideoSelect, setShowVideoSelect] = useState(false)
+  const [templatePath, setTemplatePath] = useState('')
+  const [templateName, setTemplateName] = useState('默认模板（提炼.md）')
   const [editMode, setEditMode] = useState(false)
   const [editContent, setEditContent] = useState('')
 
-  useEffect(() => {
+
+  const loadTemplate = () => {
+    apiGet<{ path: string; name: string; is_default: boolean; exists: boolean }>('/api/settings/prompt-template')
+      .then((d) => {
+        setTemplatePath(d.path)
+        setTemplateName(d.is_default ? '默认模板（提炼.md）' : d.name)
+      }).catch(() => {})
+  }
+
+  const loadVideos = () => {
     apiGet<{ videos: LibraryVideo[] }>('/api/library').then((data) => {
       setVideos(data.videos)
       const preselect = sessionStorage.getItem('workspace_video_id')
@@ -55,6 +59,14 @@ export default function WorkspacePage() {
         sessionStorage.removeItem('workspace_video_id')
       }
     }).catch(() => {})
+  }
+
+  useEffect(() => {
+    loadVideos()
+    loadTemplate()
+    // 页面获得焦点时刷新（从下载页切回来时自动更新）
+    window.addEventListener('focus', loadVideos)
+    return () => window.removeEventListener('focus', loadVideos)
   }, [])
 
   // 生成完成后同步编辑内容
@@ -83,7 +95,7 @@ export default function WorkspacePage() {
     setState({ stage: 'queued', stageMsg: '正在创建任务...' })
     try {
       const data = await apiPost<{ task_id: number }>('/api/ai/tasks', {
-        video_id: selectedVideo.video_id, mode, prompt_template: template,
+        video_id: selectedVideo.video_id, mode, prompt_template: 'custom', diagram_type: diagramType,
       })
       const sse = createSSE(`/api/ai/tasks/${data.task_id}/stream`)
       setState({ isStreaming: true, _sse: sse })
@@ -121,14 +133,15 @@ export default function WorkspacePage() {
     <div className="h-full flex overflow-hidden">
       {/* 左侧控制面板 */}
       <div className="w-72 flex flex-col border-r border-border bg-card overflow-y-auto">
-        <div className="px-4 py-4 border-b border-border flex items-center gap-2">
-          <Cpu size={16} className="text-primary" />
-          <span className="text-sm font-semibold">AI 工作台</span>
-        </div>
         <div className="flex flex-col gap-5 p-4">
           {/* 视频选择 */}
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">选择视频</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">选择视频</label>
+              <button onClick={loadVideos} className="text-muted-foreground hover:text-foreground transition-colors" title="刷新列表">
+                <RotateCcw size={12} />
+              </button>
+            </div>
             <button onClick={() => setShowVideoSelect(!showVideoSelect)}
               className="flex items-center gap-2 p-2.5 rounded-lg bg-muted border border-border hover:border-primary/40 transition-colors text-left">
               {selectedVideo ? (
@@ -174,35 +187,82 @@ export default function WorkspacePage() {
           <div className="flex flex-col gap-2">
             <label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">处理模式</label>
             <div className="flex rounded-lg border border-border overflow-hidden">
-              {(['text_only', 'multimodal'] as AiMode[]).map((m) => (
+              {(['text_only', 'multimodal', 'extract_only'] as AiMode[]).map((m) => (
                 <button key={m} onClick={() => setMode(m)}
                   className={cn('flex-1 py-1.5 text-xs transition-colors',
                     mode === m ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-muted')}>
-                  {m === 'text_only' ? '仅文字' : '多模态'}
+                  {m === 'text_only' ? '仅音频' : m === 'multimodal' ? '多模态' : '提取文本'}
                 </button>
               ))}
             </div>
           </div>
-          {/* 笔记模板：4 个可选 */}
+          {/* 图表类型 */}
+          {mode !== 'extract_only' && (
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">笔记模板</label>
-            <div className="flex flex-col gap-1.5">
-              {TEMPLATES.map((t) => (
-                <button key={t.key} onClick={() => setTemplate(t.key)}
-                  className={cn(
-                    'flex flex-col items-start p-2.5 rounded-lg border transition-colors text-left',
-                    template === t.key
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border bg-card hover:border-primary/40 hover:bg-muted/50'
-                  )}>
-                  <span className={cn('text-xs font-medium', template === t.key ? 'text-primary' : 'text-foreground')}>
-                    {t.label}
-                  </span>
-                  <span className="text-xs opacity-60 mt-0.5">{t.desc}</span>
+            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">图表类型</label>
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {(['mindmap', 'flowchart', 'graph'] as MermaidDiagramType[]).map((t) => (
+                <button key={t} onClick={() => setDiagramType(t)}
+                  className={cn('flex-1 py-1.5 text-xs transition-colors',
+                    diagramType === t ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-muted')}>
+                  {t === 'mindmap' ? '思维导图' : t === 'flowchart' ? '流程图' : '关系图'}
                 </button>
               ))}
             </div>
           </div>
+          )}
+          {/* 提示词模板 */}
+          {mode !== 'extract_only' && (
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">提示词模板</label>
+            <div className="flex items-center gap-1.5 p-2.5 rounded-lg bg-muted border border-border">
+              <FileText size={13} className="text-primary shrink-0" />
+              <span className="flex-1 text-xs truncate text-foreground" title={templatePath}>{templateName}</span>
+              <button
+                onClick={() => {
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.accept = '.md,.txt'
+                  input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0]
+                    if (!file) return
+                    // Electron 环境下 file.path 是绝对路径
+                    const filePath = (file as any).path || file.name
+                    try {
+                      await fetch('/api/settings/prompt-template', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: filePath }),
+                      })
+                      setTemplatePath(filePath)
+                      setTemplateName(file.name)
+                      showToast('success', `已切换模板：${file.name}`)
+                    } catch { showToast('error', '模板文件设置失败') }
+                  }
+                  input.click()
+                }}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors shrink-0" title="选择模板文件">
+                <FolderOpen size={13} />
+              </button>
+              {templatePath && !templateName.includes('默认') && (
+                <button
+                  onClick={async () => {
+                    await fetch('/api/settings/prompt-template', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ path: '' }),
+                    })
+                    setTemplatePath('')
+                    setTemplateName('默认模板（提炼.md）')
+                    showToast('success', '已恢复默认模板')
+                  }}
+                  className="text-xs text-muted-foreground hover:text-red-400 transition-colors shrink-0" title="恢复默认">
+                  <RotateCcw size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+          )}
           {/* 开始/停止按钮 */}
           {isProcessing ? (
             <button onClick={stop}
@@ -220,20 +280,12 @@ export default function WorkspacePage() {
       </div>
       {/* 右侧内容区 */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {stage && (
+        {stage && isProcessing && (
           <div className="px-5 py-2 border-b border-border flex items-center gap-3 bg-muted/30">
             {isProcessing && <Loader2 size={13} className="animate-spin text-primary" />}
-            {stage === 'completed' && <CheckCircle size={13} className="text-emerald-400" />}
-            {stage === 'failed' && <XCircle size={13} className="text-red-400" />}
             <span className="text-xs text-muted-foreground flex-1">
               {STAGE_LABELS[stage] ?? stage}{stageMsg && ` — ${stageMsg}`}
             </span>
-            {!isProcessing && stage && (
-              <button onClick={() => { reset(); setEditMode(false) }}
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-                <RotateCcw size={12} /> 重置
-              </button>
-            )}
           </div>
         )}
         {streamBuffer && stage === 'completed' && currentNoteId && selectedVideo && (

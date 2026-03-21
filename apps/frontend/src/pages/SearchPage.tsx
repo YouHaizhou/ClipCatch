@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 import { Search, SlidersHorizontal, X, Loader2, Youtube } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiPost } from '@/services/api'
@@ -81,7 +81,24 @@ export default function SearchPage() {
     }
   }
 
+  const isVideoUrl = (s: string) =>
+    /^https?:\/\/.*(youtube\.com|youtu\.be|bilibili\.com|twitter\.com|x\.com|b23\.tv)/.test(s.trim())
+
   const handleSearch = () => {
+    // 如果输入的是视频链接，直接弹出画质选择菜单
+    if (isVideoUrl(query)) {
+      setQualityMenuVideo({
+        id: query.trim(),
+        url: query.trim(),
+        title: query.trim(),
+        platform: 'other',
+        duration: 0,
+        thumbnailUrl: '',
+        author: '',
+        createdAt: new Date().toISOString(),
+      })
+      return
+    }
     pageRef.current = 1
     setHasMore(false); hasMoreRef.current = false
     setResults([])
@@ -162,7 +179,7 @@ export default function SearchPage() {
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input ref={inputRef} type="text" value={query} onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="输入关键词..." data-selectable="true"
+              placeholder="输入关键词或粘贴视频链接..." data-selectable="true"
               className="w-full pl-8 pr-7 py-2 rounded-lg bg-card border border-border text-sm outline-none focus:border-primary transition-colors" />
             {query && (
               <button onClick={() => { setQuery(''); setResults([]); setSearched(false) }}

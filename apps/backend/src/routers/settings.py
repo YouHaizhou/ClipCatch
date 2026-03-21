@@ -293,3 +293,39 @@ def whisper_unload(db: Session = Depends(get_db)):
         import traceback
         traceback.print_exc()
         return {"code": 1, "message": "卸载模型失败"}
+
+
+@router.get("/settings/prompt-template")
+def get_prompt_template(db: Session = Depends(get_db)):
+    """获取当前提示词模板信息"""
+    try:
+        from services.prompts import get_template_info
+        info = get_template_info(db)
+        # 同时返回模板内容（用于前端预览）
+        from pathlib import Path
+        content = ''
+        if info['exists']:
+            content = Path(info['path']).read_text(encoding='utf-8')
+        return {"code": 0, "data": {**info, "content": content}}
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return {"code": 1, "message": "获取模板信息失败"}
+
+
+@router.post("/settings/prompt-template")
+def set_prompt_template(body: dict, db: Session = Depends(get_db)):
+    """设置提示词模板文件路径（传空字符串恢复默认）"""
+    try:
+        path = body.get("path", "").strip()
+        row = db.query(Setting).filter(Setting.key == "prompt_template_path").first()
+        if row:
+            row.value = json.dumps(path)
+        else:
+            db.add(Setting(key="prompt_template_path", value=json.dumps(path)))
+        db.commit()
+        return {"code": 0, "data": {"message": "模板路径已更新"}}
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return {"code": 1, "message": "设置模板路径失败"}

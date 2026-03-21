@@ -9,12 +9,14 @@
 
 ## 功能特性
 
-- 🔍 **多平台搜索**：支持 YouTube、Bilibili、Twitter/X 关键词搜索，封面/时长/作者一览
+- 🔍 **多平台搜索**：支持 YouTube、Bilibili、Twitter/X 关键词搜索，或直接粘贴视频链接
 - ⬇️ **智能下载**：基于 yt-dlp，支持 1080p/720p/480p/仅音频，实时进度/暂停/取消
 - 🤖 **AI 知识提炼**：本地 Whisper 语音转写 + DeepSeek/OpenAI/Groq LLM 生成结构化笔记
-- 📚 **本地媒体库**：已下载视频管理，AI 状态角标，一键触发分析
-- 📝 **笔记导出**：复制全文 / 导出 .md 文件
-- 🐦 **Twitter/X 视频搜索**：需配置 Serper API Key（国内直连，无需代理）
+- 📊 **可视化思维导图**：Mermaid 思维导图/流程图/关系图，支持缩放和拖拽交互
+- 📝 **灵活笔记导出**：Markdown 格式，GitHub/Notion 原生支持 Mermaid 图表
+- 🔧 **网络诊断工具**：代理检测、连通性测试，快速排查网络问题
+- 📚 **本地媒体库**：已下载视频管理，AI 分析状态角标，一键触发分析
+- 🎯 **用户自定义模板**：支持自定义 AI 提示词模板，灵活控制生成内容
 
 ## 技术栈
 
@@ -23,9 +25,10 @@
 | 桌面框架 | Electron 33 |
 | 前端 | React 18 + TypeScript + Tailwind CSS + Zustand |
 | 后端 | FastAPI + SQLAlchemy + SQLite |
-| AI | faster-whisper（本地 STT）+ DeepSeek/OpenAI/Groq API（LLM）|
+| AI | faster-whisper（本地 STT）+ DeepSeek/OpenAI/Groq API（LLM 多提供商降级）|
+| 可视化 | Mermaid + markmap-lib |
 | 下载 | yt-dlp |
-| Twitter 搜索 | Serper API（google.serper.dev） |
+| 搜索 | Serper API（google.serper.dev） |
 
 ## 快速开始
 
@@ -66,6 +69,7 @@ pip install -r requirements.txt
 
 ```bash
 cd apps/backend/src
+$env:KMP_DUPLICATE_LIB_OK='TRUE'
 python main.py --port 57891 --host 127.0.0.1
 ```
 
@@ -88,9 +92,12 @@ pnpm dev
 
 | 配置项 | 说明 | 是否必填 |
 |--------|------|----------|
-| DeepSeek API Key | AI 笔记生成 | 推荐 |
+| DeepSeek API Key | AI 笔记生成（推荐） | 可选 |
+| OpenAI API Key | 多模态分析（可选） | 可选 |
+| Groq API Key | 备用 LLM 提供商 | 可选 |
 | Whisper 模型路径 | 本地语音转写 | 可选 |
-| Serper API Key | YouTube/Twitter/X 搜索（无代理直连，国内可用） | **Twitter 搜索必填** |
+| Serper API Key | YouTube/Twitter/X 搜索 | Twitter 搜索必填 |
+| 提示词模板 | 自定义 AI 生成模板 | 可选（默认使用内置模板） |
 
 #### Whisper 模型下载
 
@@ -98,22 +105,6 @@ pnpm dev
 - ModelScope（国内）：https://modelscope.cn/models/pkufool/faster-whisper-small
 
 下载解压后，将包含 `model.bin` 的文件夹路径填入设置。
-
-## 打包发布（Windows EXE）
-
-```bash
-# 安装依赖
-pnpm install
-
-# 打包 Windows zip 便携包
-cd apps/desktop
-pnpm build:win
-
-# 输出目录：apps/desktop/release/
-```
-
-> 打包前需确保 `apps/desktop/resources/ffmpeg/win/` 目录下有 `ffmpeg.exe` 和 `ffprobe.exe`
-> 下载地址：https://github.com/BtbN/FFmpeg-Builds/releases
 
 ## 项目结构
 
@@ -132,9 +123,36 @@ video-ai-desktop/
 │   │       └── services/  # 业务服务
 │   └── desktop/           # Electron 主进程
 ├── docs/                  # 项目文档
+│   ├── PROJECT_OVERVIEW.md    # 项目概述（快速了解）
+│   ├── AGENT_OVERVIEW.md      # 详细架构文档
+│   └── GIT_WORKFLOW.md        # Git 工作流规范
+├── prompt/
+│   └── 提炼.md            # AI 提示词模板（用户可自定义）
 ├── STARTUP.bat            # 一键启动脚本
 └── README.md
 ```
+
+## 文档导航
+
+- **[PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md)** — 项目快速概述（推荐新手阅读）
+- **[AGENT_OVERVIEW.md](./docs/AGENT_OVERVIEW.md)** — 详细的架构和 API 文档
+- **[GIT_WORKFLOW.md](./docs/GIT_WORKFLOW.md)** — Git 工作流规范
+
+## 打包发布（Windows EXE）
+
+```bash
+# 安装依赖
+pnpm install
+
+# 打包 Windows zip 便携包
+cd apps/desktop
+pnpm build:win
+
+# 输出目录：apps/desktop/release/
+```
+
+> 打包前需确保 `apps/desktop/resources/ffmpeg/win/` 目录下有 `ffmpeg.exe` 和 `ffprobe.exe`
+> 下载地址：https://github.com/BtbN/FFmpeg-Builds/releases
 
 ## 常见问题
 
@@ -149,6 +167,9 @@ A: Twitter/X 平台已于 2024 年关闭所有公开 Guest Token 接口，无法
 
 **Q: AI 生成显示「0字」？**
 A: 确保 DeepSeek/OpenAI/Groq API Key 已配置，且网络可访问对应服务。
+
+**Q: 思维导图显示异常？**
+A: 检查浏览器控制台是否有 Mermaid 渲染错误。确保生成的内容包含 ` ```mermaid ``` ` 代码块。
 
 ## ⚠️ 免责声明
 

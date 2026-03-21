@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from database import init_db
-from routers import search, download, ai, library, settings, notes, twitter
+from routers import search, download, ai, library, settings, notes, twitter, diagnostics
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=57891)
@@ -45,6 +45,7 @@ app.include_router(library.router, prefix='/api')
 app.include_router(settings.router, prefix='/api')
 app.include_router(notes.router, prefix='/api')
 app.include_router(twitter.router, prefix='/api')
+app.include_router(diagnostics.router, prefix='/api')
 
 FALLBACK_PNG = base64.b64decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
