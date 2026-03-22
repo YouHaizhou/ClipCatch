@@ -110,7 +110,16 @@ export default function WorkspacePage() {
           const ev = event as any
           const wordCount = ev.wordCount ?? ev.word_count ?? 0
           const noteId = ev.noteId ?? ev.note_id ?? null
-          setState({ stage: 'completed', stageMsg: `生成完成，共 ${wordCount} 字`, isStreaming: false, currentNoteId: noteId, _sse: null })
+          const providerPath: string[] = ev.provider_path ?? []
+          // 构造提供商路径提示（BGP AS_PATH 思路）
+          const providerHint = providerPath.length
+            ? ` · ${providerPath[providerPath.length - 1].replace('(ok)', '')} 生成${
+                providerPath.length > 1
+                  ? `（${providerPath.slice(0, -1).map(s => s.replace(/\(.*\)/, '')).join(' → ')} 降级）`
+                  : ''
+              }`
+            : ''
+          setState({ stage: 'completed', stageMsg: `生成完成，共 ${wordCount} 字${providerHint}`, isStreaming: false, currentNoteId: noteId, _sse: null })
           sse.close()
           showToast('success', 'AI 笔记生成完成')
         } else if (event.type === 'error') {

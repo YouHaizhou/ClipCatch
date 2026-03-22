@@ -29,6 +29,13 @@ apps/desktop/dist/
 apps/desktop/dist-electron/
 apps/desktop/release/
 
+# PyInstaller 打包产物（体积过大，不提交 git）
+apps/desktop/backend/
+build/pyinstaller/
+backend.spec
+build-backend.bat
+_fix_configs.py
+
 # Database & data
 *.db
 *.sqlite

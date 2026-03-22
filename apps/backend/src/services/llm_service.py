@@ -265,6 +265,7 @@ async def stream_summary(
 
     attempted: list[str] = []   # 记录已尝试的提供商名称（用于最终错误提示）
     last_error: str = ''
+    provider_path: list[str] = []  # BGP AS_PATH 思路：记录每次尝试结果，供前端展示
 
     for provider in _PROVIDERS:
         pid = provider['id']
@@ -303,16 +304,18 @@ async def stream_summary(
 
                 # 成功：重置断路器
                 _breaker.record_success(pid)
+                provider_path.append(f'{provider["name"]}(ok)')
 
                 if on_progress:
                     on_progress('generating', f'生成完成（{provider["name"]}），共 {len(full_content)} 字')
 
-                return full_content
+                return full_content, provider_path
 
             except PermissionError as e:
                 # 401 无效 Key：本会话永久跳过，不重试
                 _breaker.record_failure(pid, permanent=True)
                 last_error = str(e)
+                provider_path.append(f'{provider["name"]}(failed: invalid key)')
                 break  # 直接切换下一个提供商
 
             except IOError as e:
@@ -328,18 +331,21 @@ async def stream_summary(
                     await asyncio.sleep(delay)
                 else:
                     # 重试耗尽，记录失败，切换下一提供商
+                    provider_path.append(f'{provider["name"]}(failed: rate limit)')
                     break
 
             except (httpx.ConnectError, httpx.TimeoutException) as e:
                 # 连接失败 / 超时：直接切换，不退避
                 _breaker.record_failure(pid)
                 last_error = f'{provider["name"]} 连接失败: {e}'
+                provider_path.append(f'{provider["name"]}(failed: timeout)')
                 break
 
             except Exception as e:
                 # 其他错误：记录失败，切换下一提供商
                 _breaker.record_failure(pid)
                 last_error = str(e)
+                provider_path.append(f'{provider["name"]}(failed: {type(e).__name__})')
                 break
 
     # 全部提供商均失败

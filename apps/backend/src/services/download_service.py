@@ -19,6 +19,21 @@ _cancel_flags: dict[int, bool] = {}
 _paused_flags: dict[int, bool] = {}  # 暂停标志（区别于取消）
 _progress_callbacks: dict[int, Callable] = {}
 
+# ============================================================
+# 并发下载窗口控制 — TCP 滑动窗口思路：最多同时 3 个 yt-dlp 进程
+# 第 4 个及以后的任务在此处阻塞等待，直到某个下载完成释放槽位
+# ============================================================
+_DOWNLOAD_CONCURRENCY = 3
+_download_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """延迟初始化 Semaphore（确保在 event loop 已存在时创建）"""
+    global _download_semaphore
+    if _download_semaphore is None:
+        _download_semaphore = asyncio.Semaphore(_DOWNLOAD_CONCURRENCY)
+    return _download_semaphore
+
 
 def _new_db():
     """创建独立的数据库 Session"""
@@ -97,6 +112,17 @@ async def start_download(
     url: str,
     quality: str,
     db: Session = None,  # 保留签名兼容，内部统一使用独立 Session
+) -> None:
+    # 并发窗口限制：最多 _DOWNLOAD_CONCURRENCY 个任务同时执行
+    async with _get_semaphore():
+        await _do_start_download(task_id, video_id, url, quality)
+
+
+async def _do_start_download(
+    task_id: int,
+    video_id: int,
+    url: str,
+    quality: str,
 ) -> None:
     _pause_events[task_id] = asyncio.Event()
     _pause_events[task_id].set()

@@ -1,6 +1,6 @@
 // VideoCard — 视频卡片组件
 import { useState } from 'react'
-import { Download, Play, Clock, User } from 'lucide-react'
+import { Download, Play, Clock, User, Shield, AlertTriangle } from 'lucide-react'
 import { cn, formatDuration } from '@/lib/utils'
 import { proxyImageUrl } from '@/services/api'
 import type { VideoInfo } from '@/types'
@@ -73,10 +73,32 @@ export default function VideoCard({ video, onDownload, onPreview }: VideoCardPro
       </div>
       <div className="p-3 flex flex-col gap-1.5">
         <h3 className="text-sm font-medium leading-snug line-clamp-2 text-foreground">{video.title}</h3>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <User size={11} />
-          <span className="truncate">{video.author || '未知作者'}</span>
-
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+            <User size={11} />
+            <span className="truncate">{video.author || '未知作者'}</span>
+          </div>
+          {video.sourceReliability === 'contract' ? (
+            <div className="group/tip relative flex-shrink-0">
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-xs">
+                <Shield size={10} />
+                <span>稳定</span>
+              </div>
+              <div className="absolute bottom-full right-0 mb-1.5 w-40 px-2 py-1.5 rounded-md bg-popover border border-border text-xs text-muted-foreground shadow-lg opacity-0 group-hover/tip:opacity-100 pointer-events-none transition-opacity duration-150 z-10">
+                数据来自官方 API，链接稳定可靠{video.sourceName ? `（${video.sourceName}）` : ''}
+              </div>
+            </div>
+          ) : video.sourceReliability === 'heuristic' ? (
+            <div className="group/tip relative flex-shrink-0">
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 text-xs">
+                <AlertTriangle size={10} />
+                <span>可能失效</span>
+              </div>
+              <div className="absolute bottom-full right-0 mb-1.5 w-44 px-2 py-1.5 rounded-md bg-popover border border-border text-xs text-muted-foreground shadow-lg opacity-0 group-hover/tip:opacity-100 pointer-events-none transition-opacity duration-150 z-10">
+                数据来自网页解析，平台更新后可能失效
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

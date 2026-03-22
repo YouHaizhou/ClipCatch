@@ -116,4 +116,4 @@ async def proxy_image(url: str):
 
 
 if __name__ == '__main__':
-    uvicorn.run('main:app', host=args.host, port=args.port, log_level='info', reload=False)
+    uvicorn.run(app, host=args.host, port=args.port, log_level='info', reload=False)

@@ -20,6 +20,8 @@ export interface VideoInfo {
   quality?: VideoQuality
   downloadedAt?: string
   createdAt: string
+  sourceReliability?: 'contract' | 'heuristic'  // contract=官方API稳定, heuristic=爬虫可能失效
+  sourceName?: string     // 来源名称，如 Serper / Bilibili API / yt-dlp
 }
 
 export type VideoQuality = '1080p' | '720p' | '480p' | 'audio_only'

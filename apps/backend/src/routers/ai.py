@@ -199,7 +199,7 @@ async def _run_ai_pipeline(
             content_buffer.append(token)
             _push(task_id, {'type': 'token', 'content': token})
 
-        full_content = await stream_summary(
+        full_content, provider_path = await stream_summary(
             transcript=transcript,
             title=video.title,
             template_key=template,
@@ -230,6 +230,7 @@ async def _run_ai_pipeline(
             'noteId': note.id,
             'word_count': word_count,
             'wordCount': word_count,
+            'provider_path': provider_path,
         })
 
     except Exception as e:

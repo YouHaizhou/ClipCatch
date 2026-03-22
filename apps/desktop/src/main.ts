@@ -28,24 +28,31 @@ if (!gotLock) {
 // ---------- 1. 启动 Python FastAPI 后端子进程 ----------
 function startBackend(): void {
   const isProd = app.isPackaged
-  const backendPath = isProd
-    ? path.join(process.resourcesPath, 'backend', 'main.py')
-    : path.join(__dirname, '..', 'backend', 'main.py')
-
-  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
 
   // 注入 ffmpeg 路径，确保打包后 yt-dlp 能调用 ffmpeg
   const env = { ...process.env }
+  const ffmpegDir = isProd
+    ? path.join(process.resourcesPath, 'ffmpeg', 'win')
+    : path.join(__dirname, '..', '..', 'resources', 'ffmpeg', 'win')
+  env.PATH = `${ffmpegDir};${env.PATH ?? ''}`
+  // 数据目录：让后端把 SQLite DB 和下载文件存到用户目录，而非 asar 包内
+  env.CLIPCATCH_DATA_DIR = path.join(app.getPath('userData'), 'data')
+
+  let backendCmd: string
+  let backendArgs: string[]
+
   if (isProd) {
-    const ffmpegDir = path.join(process.resourcesPath, 'ffmpeg', 'win')
-    env.PATH = `${ffmpegDir};${env.PATH ?? ''}`
+    // 生产模式：直接运行 PyInstaller 打包的 backend.exe，无需 Python
+    backendCmd = path.join(process.resourcesPath, 'backend', 'backend.exe')
+    backendArgs = ['--port', String(backendPort), '--host', '127.0.0.1']
+  } else {
+    // 开发模式：用系统 Python 运行源码
+    const backendPath = path.join(__dirname, '..', '..', '..', 'apps', 'backend', 'src', 'main.py')
+    backendCmd = process.platform === 'win32' ? 'python' : 'python3'
+    backendArgs = [backendPath, '--port', String(backendPort), '--host', '127.0.0.1']
   }
 
-  backendProcess = spawn(pythonCmd, [
-    backendPath,
-    '--port', String(backendPort),
-    '--host', '127.0.0.1',
-  ], {
+  backendProcess = spawn(backendCmd, backendArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env,
   })

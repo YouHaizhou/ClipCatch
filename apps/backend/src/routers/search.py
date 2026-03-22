@@ -22,6 +22,8 @@ def _to_camel(item: dict) -> dict:
         'publishedAt': str(item.get('published_at', '') or item.get('publishedAt', '') or ''),
         'viewCount': item.get('view_count', 0) or item.get('viewCount', 0),
         'createdAt': str(item.get('created_at', '') or item.get('createdAt', '') or ''),
+        'sourceReliability': item.get('source_reliability', 'heuristic'),
+        'sourceName': item.get('source_name', ''),
     }
 
 

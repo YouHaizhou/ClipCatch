@@ -2,19 +2,51 @@ import asyncio
 import re
 import json
 import os
+import time
 from typing import Optional
 import httpx
 from sqlalchemy.orm import Session
 
-# 代理配置：懒加载，每次调用时读取，确保 main.py 之后设置的环境变量能被感知
+# ============================================================
+# 搜索结果缓存 - DNS TTL 思路: TTL 300s + LRU 淘汰(最多 100 条)
+# ============================================================
+_search_cache: dict[str, tuple[list, float]] = {}
+_CACHE_TTL = 300
+_CACHE_MAX = 100
+
+
+def _cache_key(query: str, platform: str, page: int, duration_filter, sort: str) -> str:
+    return f"{platform}:{sort}:{duration_filter}:{page}:{query.lower().strip()}"
+
+
+def _cache_get(key: str):
+    entry = _search_cache.get(key)
+    if entry is None:
+        return None
+    results, expire_ts = entry
+    if time.time() < expire_ts:
+        _search_cache.pop(key)
+        _search_cache[key] = (results, expire_ts)
+        return results
+    _search_cache.pop(key, None)
+    return None
+
+
+def _cache_set(key: str, results: list) -> None:
+    if key in _search_cache:
+        _search_cache.pop(key)
+    elif len(_search_cache) >= _CACHE_MAX:
+        oldest_key = next(iter(_search_cache))
+        _search_cache.pop(oldest_key)
+    _search_cache[key] = (results, time.time() + _CACHE_TTL)
+
+
 def _get_proxy() -> str | None:
-    # 1. explicit env vars
     proxy = (os.environ.get('VIDEOAI_PROXY') or os.environ.get('TWS_PROXY')
              or os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
              or os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy'))
     if proxy:
         return proxy
-    # 2. Windows registry proxy (Clash / V2ray system proxy)
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
@@ -31,43 +63,36 @@ def _get_proxy() -> str | None:
         pass
     return None
 
+
 def _make_client(use_proxy: bool = False, **kwargs) -> httpx.AsyncClient:
-    """Create httpx client. use_proxy=True for YouTube/Twitter/Serper."""
     if use_proxy:
         proxy = _get_proxy()
         if proxy:
             kwargs['trust_env'] = False
             kwargs.setdefault('proxy', proxy)
         else:
-            # No explicit proxy found; let httpx read env/system proxy
             kwargs['trust_env'] = True
     else:
         kwargs['trust_env'] = False
     return httpx.AsyncClient(**kwargs)
 
 
-
 def _parse_duration(s: str) -> int:
-    """Parse duration string like '1:23:45' or '12:34' or '1h23m' into seconds."""
     if not s:
         return 0
     s = str(s).strip()
-    import re
-    # Format: HH:MM:SS or MM:SS
     m = re.match(r'^(\d+):(\d+)(?::(\d+))?$', s)
     if m:
         parts = [int(x) for x in m.groups() if x is not None]
         if len(parts) == 3:
             return parts[0] * 3600 + parts[1] * 60 + parts[2]
         return parts[0] * 60 + parts[1]
-    # Format: 1h23m45s
     m2 = re.match(r'(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?', s)
     if m2:
         h = int(m2.group(1) or 0)
         m_ = int(m2.group(2) or 0)
         sec = int(m2.group(3) or 0)
         return h * 3600 + m_ * 60 + sec
-    # Plain seconds
     try:
         return int(s)
     except Exception:
@@ -81,35 +106,38 @@ _HEADERS = {
 }
 
 
-def _get_yt_data_api_key(db: Session) -> Optional[str]:
-    """从 DB 读取 YouTube Data API v3 Key"""
+def _get_yt_data_api_key(db):
     from models import Setting
     row = db.query(Setting).filter(Setting.key == 'api_key_youtube_data').first()
     return json.loads(row.value) if row and row.value else None
 
 
-def _get_serper_config(db: Session) -> tuple[Optional[str], bool]:
-    """
-    从已有的 db Session 读取 Serper API Key 和启用状态。
-    返回 (key, enabled)，key=None 表示未配置。
-    """
+def _get_serper_config(db):
     from models import Setting
     row = db.query(Setting).filter(Setting.key == 'api_key_serper').first()
-    serper_key: Optional[str] = json.loads(row.value) if row and row.value else None
+    serper_key = json.loads(row.value) if row and row.value else None
     row_en = db.query(Setting).filter(Setting.key == 'api_key_serper_enabled').first()
-    enabled: bool = json.loads(row_en.value) if row_en and row_en.value is not None else True
+    enabled = json.loads(row_en.value) if row_en and row_en.value is not None else True
     return serper_key, enabled
 
 
 async def search_videos(
-    db: Session,
+    db,
     query: str,
     platform: str = 'all',
-    duration_filter: Optional[str] = None,
+    duration_filter=None,
     sort: str = 'relevance',
     page: int = 1,
-    seed: Optional[int] = None,
+    seed=None,
 ) -> dict:
+    # ---- 缓存读取（seed 随机化请求不走缓存）----
+    cache_key = None
+    if seed is None:
+        cache_key = _cache_key(query, platform, page, duration_filter, sort)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return {'results': cached, 'total': len(cached), 'page': page, 'from_cache': True}
+
     results = []
 
     if platform in ('bilibili', 'all'):
@@ -149,6 +177,10 @@ async def search_videos(
         import random
         random.Random(seed).shuffle(results)
 
+    # ---- 缓存写入 ----
+    if cache_key is not None and results:
+        _cache_set(cache_key, results)
+
     return {'results': results, 'total': len(results), 'page': page}
 
 async def _search_bilibili(query: str, page: int = 1, sort: str = 'relevance') -> list:
@@ -166,7 +198,6 @@ async def _search_bilibili(query: str, page: int = 1, sort: str = 'relevance') -
         'Origin': 'https://www.bilibili.com',
         'Accept': 'application/json, text/plain, */*',
     }
-    # Bilibili 直连（use_proxy=False），避免代理导致IP异常被412
     async with _make_client(use_proxy=False, timeout=15, follow_redirects=True, headers=headers) as client:
         try:
             await client.get('https://www.bilibili.com/', timeout=5)
@@ -209,33 +240,29 @@ async def _search_bilibili(query: str, page: int = 1, sort: str = 'relevance') -
             'author': item.get('author', ''),
             'published_at': str(item.get('pubdate', '')),
             'view_count': item.get('play', 0),
+            'source_reliability': 'contract',
+            'source_name': 'Bilibili API',
         })
     return results
 
-async def _search_youtube(db: Session, query: str, page: int = 1) -> list:
+
+async def _search_youtube(db, query: str, page: int = 1) -> list:
     """YouTube 搜索降级链：Serper -> YouTube Data API v3 -> yt-dlp 直连 -> fallback"""
-    # 1. Serper（国内直连，最稳定）
     serper_key, serper_enabled = _get_serper_config(db)
     if serper_key and serper_enabled:
         serper_results = await _search_youtube_via_serper(serper_key, query, page)
         if serper_results:
             return serper_results
-
-    # 2. YouTube Data API v3（国内可达，免费配额 10000 次/天，无需代理）
     yt_key = _get_yt_data_api_key(db)
     if yt_key:
         yt_results = await _search_youtube_via_data_api(yt_key, query, page)
         if yt_results:
             return yt_results
-
-    # 3. yt-dlp 直连（需代理）-> fallback
     return await _search_youtube_direct(query, page)
 
 
-async def _search_youtube_via_serper(serper_key: str, query: str, page: int = 1) -> Optional[list]:
-    """通过 Serper API 搜索 YouTube（国内直连 serper.dev，无需代理）"""
+async def _search_youtube_via_serper(serper_key: str, query: str, page: int = 1):
     try:
-        # Serper 是国内可达的 Google 搜索代理，不走本地代理
         async with _make_client(use_proxy=False, timeout=15) as client:
             resp = await client.post(
                 'https://google.serper.dev/videos',
@@ -262,18 +289,53 @@ async def _search_youtube_via_serper(serper_key: str, query: str, page: int = 1)
                 'author': item.get('channel', ''),
                 'published_at': item.get('date', ''),
                 'view_count': 0,
+                'source_reliability': 'contract',
+                'source_name': 'Serper',
             })
         return results if results else None
     except Exception:
         return None
 
 
+async def _search_youtube_via_data_api(yt_key: str, query: str, page: int = 1):
+    try:
+        async with _make_client(use_proxy=False, timeout=15) as client:
+            resp = await client.get(
+                'https://www.googleapis.com/youtube/v3/search',
+                params={'part': 'snippet', 'q': query, 'type': 'video',
+                        'maxResults': 20, 'key': yt_key},
+            )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        results = []
+        for item in data.get('items', []):
+            video_id = item.get('id', {}).get('videoId', '')
+            snippet = item.get('snippet', {})
+            if not video_id:
+                continue
+            results.append({
+                'id': video_id,
+                'title': snippet.get('title', ''),
+                'url': f'https://www.youtube.com/watch?v={video_id}',
+                'platform': 'youtube',
+                'duration': 0,
+                'thumbnail_url': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
+                'author': snippet.get('channelTitle', ''),
+                'published_at': snippet.get('publishedAt', ''),
+                'view_count': 0,
+                'source_reliability': 'contract',
+                'source_name': 'YouTube Data API',
+            })
+        return results if results else None
+    except Exception:
+        return None
+
 async def _search_youtube_direct(query: str, page: int = 1) -> list:
     """直连 YouTube（国外，需科学上网），Serper 不可用时的降级方案"""
-    search_url = f'https://www.youtube.com/results?search_query={query.replace(" ", "+")}'
+    search_url = 'https://www.youtube.com/results?search_query=' + query.replace(' ', '+')
     headers = {**_HEADERS, 'Accept-Language': 'en-US,en;q=0.9'}
     try:
-        # YouTube 需要代理才能访问
         async with _make_client(use_proxy=True, timeout=15, follow_redirects=True) as client:
             resp = await client.get(search_url, headers=headers)
         if resp.status_code != 200:
@@ -305,6 +367,8 @@ async def _search_youtube_direct(query: str, page: int = 1) -> list:
                         'platform': 'youtube', 'duration': duration_sec,
                         'thumbnail_url': thumb, 'author': author,
                         'published_at': '', 'view_count': 0,
+                        'source_reliability': 'heuristic',
+                        'source_name': 'yt-dlp',
                     })
                 if len(results) >= 20:
                     break
@@ -312,30 +376,28 @@ async def _search_youtube_direct(query: str, page: int = 1) -> list:
                 break
         return results
     except Exception:
-        yt_url = f'https://www.youtube.com/results?search_query={query.replace(" ", "+")}'
+        yt_url = 'https://www.youtube.com/results?search_query=' + query.replace(' ', '+')
         return [{'id': 'youtube_search', 'title': f'在 YouTube 上搜索「{query}」（点击跳转，需梯子）',
                  'url': yt_url, 'platform': 'youtube', 'duration': 0,
-                 'thumbnail_url': '', 'author': 'YouTube', 'published_at': '', 'view_count': 0}]
+                 'thumbnail_url': '', 'author': 'YouTube', 'published_at': '', 'view_count': 0,
+                 'source_reliability': 'heuristic', 'source_name': 'fallback'}]
 
-async def _search_twitter(db: Session, query: str, page: int = 1) -> list:
+
+async def _search_twitter(db, query: str, page: int = 1) -> list:
     """搜索 Twitter/X：优先 Serper（国内直连），降级代理直连，最终返回跳转卡片"""
     serper_key, serper_enabled = _get_serper_config(db)
-
     if not serper_key or not serper_enabled:
-        # 无 Serper 时，尝试走代理直连 Twitter 搜索页（需挂梯子）
         proxy_results = await _search_twitter_direct(query, page)
         if proxy_results:
             return proxy_results
         return [_twitter_fallback_card(query)]
-
     results = []
     try:
-        # Serper 国内可达，不走代理
         async with _make_client(use_proxy=False, timeout=15) as client:
             resp1 = await client.post(
                 'https://google.serper.dev/videos',
                 headers={'X-API-KEY': serper_key, 'Content-Type': 'application/json'},
-                json={'q': f'{query} site:twitter.com OR site:x.com', 'num': 10},
+                                json={'q': f'{query} site:twitter.com OR site:x.com', 'num': 10},
             )
         if resp1.status_code == 200:
             for item in resp1.json().get('videos', []):
@@ -352,6 +414,8 @@ async def _search_twitter(db: Session, query: str, page: int = 1) -> list:
                     'author': item.get('channel', ''),
                     'published_at': item.get('date', ''),
                     'view_count': 0,
+                    'source_reliability': 'contract',
+                    'source_name': 'Serper',
                 })
 
         if len(results) < 5:
@@ -377,6 +441,8 @@ async def _search_twitter(db: Session, query: str, page: int = 1) -> list:
                         'author': '',
                         'published_at': item.get('date', ''),
                         'view_count': 0,
+                        'source_reliability': 'contract',
+                        'source_name': 'Serper',
                     })
 
         if not results:
@@ -389,7 +455,6 @@ async def _search_twitter(db: Session, query: str, page: int = 1) -> list:
 
 
 def _twitter_fallback_card(query: str, suffix: str = '') -> dict:
-    """构造 Twitter 搜索跳转兜底卡片"""
     url = f'https://twitter.com/search?q={query.replace(" ", "%20")}&f=video'
     return {
         'id': f'twitter_search{suffix}',
@@ -401,6 +466,8 @@ def _twitter_fallback_card(query: str, suffix: str = '') -> dict:
         'author': 'Twitter/X',
         'published_at': '',
         'view_count': 0,
+        'source_reliability': 'heuristic',
+        'source_name': 'fallback',
     }
 
 
@@ -410,5 +477,3 @@ async def _search_twitter_direct(query: str, page: int = 1) -> list:
     请配置 Serper API Key 使用 Serper 搜索 Twitter 视频。
     """
     return []
-
-

@@ -1,44 +1,45 @@
 # ============================================================
 # electron-builder 配置
 # Windows 便携 zip 包（无需代码签名，无需 Developer Mode）
-# asar 保护源码
+# 后端为 PyInstaller 打包的 backend.exe，无需用户安装 Python
 # ============================================================
 appId: com.clipcatch.desktop
 productName: ClipCatch
 copyright: Copyright © 2026 ClipCatch
 
-# asar 打包：将所有源码压缩为 app.asar，防止直接读取
+# asar 打包：将前端/Electron 源码压缩为 app.asar
 asar: true
-# 解包 FFmpeg 二进制（不能放在 asar 内，需直接执行）
+# 解包二进制文件（不能放在 asar 内，需直接执行）
 asarUnpack:
   - resources/ffmpeg/**
-  - backend/**
+  - resources/backend/**
 
 directories:
   buildResources: build-resources
   output: release
 
-# 打包进安装包的文件
+# 打包进安装包的文件（Electron renderer 产物）
 files:
   - dist/**
   - dist-electron/**
   - package.json
 
-# 额外资源（放在 resources/ 目录，运行时可访问）
+# 额外资源（放在 resources/ 目录，运行时通过 process.resourcesPath 访问）
 extraResources:
   - from: resources/ffmpeg/win
     to: ffmpeg/win
     filter:
       - ffmpeg.exe
       - ffprobe.exe
-  - from: backend
+  - from: backend/backend
     to: backend
     filter:
-      - "**/*.py"
-      - requirements.txt
+      - "**/*"
+  - from: "../../../prompt"
+    to: prompt
 
 # ============================================================
-# Windows 配置 — zip 便携包（不需要 winCodeSign/symlink 权限）
+# Windows 配置 — zip 便携包
 # ============================================================
 win:
   target:
