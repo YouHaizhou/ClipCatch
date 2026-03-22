@@ -70,7 +70,7 @@ function startBackend(): void {
     backendProcess = null
   })
 
-  console.log(`[Main] Backend started: ${backendPath} on port ${backendPort}`)
+  console.log(`[Main] Backend started: ${backendCmd} on port ${backendPort}`)
 }
 
 // ---------- 2. 等待后端就绪（轮询 /health 接口）----------

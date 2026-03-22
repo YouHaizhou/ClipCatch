@@ -35,11 +35,12 @@ extraResources:
     to: backend
     filter:
       - "**/*"
-  - from: "../../../prompt"
+  - from: "../../prompt"
     to: prompt
 
 # ============================================================
 # Windows 配置 — zip 便携包
+# 禁用代码签名（无证书环境，避免 winCodeSign 符号链接权限问题）
 # ============================================================
 win:
   target:
@@ -47,6 +48,8 @@ win:
       arch:
         - x64
   requestedExecutionLevel: asInvoker
+
+forceCodeSigning: false
 
 # ============================================================
 # macOS 配置（备用）
